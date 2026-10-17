@@ -1,0 +1,41 @@
+// Deep zoom + pan: zoom far into a small object with the wheel, then pan; panning must still move the view.
+import puppeteer from 'puppeteer-core';
+import { pathToFileURL } from 'node:url';
+import { mkdirSync } from 'node:fs';
+mkdirSync('test/shots', { recursive: true });
+const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', protocolTimeout: 60000, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'], defaultViewport: { width: 1500, height: 900 } });
+const page = await browser.newPage();
+const errors = [];
+page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.waitForFunction(() => document.body.classList.contains('ready'));
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const app = (fn, ...a) => page.evaluate(fn, ...a);
+await app(() => { localStorage.clear(); const a = window.LocalCAD; a.addShape('thread'); a.setSelection([]); a.frame(); });
+await wait(600);
+const cv = await (await page.$('#viewport canvas')).boundingBox();
+const tp = await app(() => { const a = window.LocalCAD; const b = a.sceneBox(); const c = b.getCenter(b.min.clone()); c.z = b.max.z; return a.vp.project(c); });
+const mx = cv.x + tp.x, my = cv.y + tp.y;
+await page.mouse.move(mx, my);
+const surf = () => app(() => { const a = window.LocalCAD, vp = a.vp; const hit = vp.raycast({ clientX: vp.canvas.getBoundingClientRect().left + vp.canvas.clientWidth / 2, clientY: vp.canvas.getBoundingClientRect().top + vp.canvas.clientHeight / 2 }, vp.pickables(true)); return { camToTarget: +vp.camera.position.distanceTo(vp.controls.target).toFixed(4), near: vp.persp.near, camZ: +vp.camera.position.z.toFixed(3) }; });
+console.log('start', JSON.stringify(await surf()));
+for (let i = 0; i < 120; i++) { await page.mouse.wheel({ deltaY: -120 }); }
+await wait(800);
+const z1 = await surf();
+console.log('after 120 wheel-ins', JSON.stringify(z1));
+await page.screenshot({ path: 'test/shots/40-deep-zoom.png' });
+const p0 = await app(() => window.LocalCAD.vp.camera.position.toArray());
+await page.mouse.move(mx, my);
+await page.mouse.down({ button: 'middle' });
+await page.mouse.move(mx - 200, my, { steps: 10 });
+await page.mouse.up({ button: 'middle' });
+await wait(500);
+const p1 = await app(() => window.LocalCAD.vp.camera.position.toArray());
+const moved = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+console.log('pan moved camera by', moved.toFixed(4), 'mm; ratio to view distance', (moved / z1.camToTarget).toFixed(2));
+await page.screenshot({ path: 'test/shots/41-deep-pan.png' });
+for (let i = 0; i < 60; i++) { await page.mouse.wheel({ deltaY: 120 }); }
+await wait(500);
+console.log('zoom back out', JSON.stringify(await surf()));
+console.log('ERRORS:', errors.join('\n') || 'none');
+await browser.close();

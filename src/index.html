@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DraftOtter</title>
+<meta name="description" content="DraftOtter — a precise, offline, browser-based CAD tool for designing 3D-printable parts and exporting STL.">
+<link rel="icon" type="image/png" href="__BRAND_BADGE__">
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="loading" role="progressbar" aria-label="Loading">
+	<div class="ld-card">
+		<img class="ld-mark" src="__BRAND_BADGE__" alt="">
+		<div class="ld-title"><span class="bn-draft">Draft</span><span class="bn-otter">Otter</span></div>
+		<div class="ld-text">Starting…</div>
+		<div class="ld-track"><div class="ld-fill"></div></div>
+		<div class="ld-sub"></div>
+	</div>
+</div>
+<div id="app">
+	<header id="topbar">
+		<div class="brand">
+			<img class="brand-mark" src="__BRAND_BADGE__" alt="">
+			<span class="brand-name"><span class="bn-draft">Draft</span><span class="bn-otter">Otter</span></span>
+		</div>
+		<input id="project-name" type="text" title="Design name" spellcheck="false">
+		<div id="toolbar"></div>
+	</header>
+	<aside id="left">
+		<div class="panel-title">Shapes</div>
+		<div id="library"></div>
+		<div class="panel-title">Objects <span id="tree-count"></span></div>
+		<div id="tree"></div>
+	</aside>
+	<main id="viewport">
+		<div id="empty-hint">
+			<h2>Start designing</h2>
+			<p><span class="m-only">Tap a shape below</span><span class="d-only">Click a shape on the left (or drag it onto the bed)</span>.</p>
+			<p>Mark shapes as <b>Hole</b>, then <b>Group</b> them with solids to cut.</p>
+			<p class="d-only">Press <kbd>?</kbd> for shortcuts.</p>
+		</div>
+	</main>
+	<aside id="right">
+		<div class="panel-title">Properties</div>
+		<div id="props"></div>
+		<div class="panel-title">Print info</div>
+		<div id="stats"></div>
+	</aside>
+	<footer id="status">
+		<span id="st-cursor"></span>
+		<span id="st-hint"></span>
+		<span class="grow"></span>
+		<span id="save-state" class="save-state"></span>
+		<span id="st-engine"></span>
+	</footer>
+</div>
+<script type="module">/*__JS__*/</script>
+</body>
+</html>

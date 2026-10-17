@@ -1,0 +1,14 @@
+node_modules/
+test/.out.mjs
+test/shots/
+test/downloads/
+test/.*.mjs
+landing-dist/
+# build outputs (made by npm run build / web / dist)
+LocalCAD.html
+web/
+dist/
+# machine-local
+.firebase/
+.mcp.json
+test/_*.mjs

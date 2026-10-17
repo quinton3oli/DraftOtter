@@ -1,0 +1,128 @@
+{
+  "manifest_version": "0.3",
+  "name": "localcad",
+  "display_name": "DraftOtter",
+  "version": "1.1.0",
+  "description": "Let Claude design 3D-printable parts in DraftOtter, the offline CAD app open in your browser.",
+  "long_description": "Connects Claude to DraftOtter running in your browser. Claude can read the design, add shapes and custom sketches, cut holes, use design variables, check its work with screenshots and print stats, and export STL, 3MF or STEP files. You see every change live in DraftOtter and can undo each one.\n\nIn DraftOtter, open More (wrench) → Connect Claude and tick \"Allow Claude to connect\". Everything stays on this computer: the extension only talks to DraftOtter over 127.0.0.1.",
+  "author": {
+    "name": "DraftOtter"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "localcad-mcp.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/localcad-mcp.mjs"
+      ],
+      "env": {
+        "LOCALCAD_PORT": "${user_config.port}",
+        "LOCALCAD_EXPORT_DIR": "${user_config.export_dir}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "get_design",
+      "description": "The open design: its name, printer bed size, variables, the current selection, and the object tree (id, name, type, hole, group mode, parameters, pos/rot/scale, color, and the world-space bounding box of each object)."
+    },
+    {
+      "name": "list_shape_types",
+      "description": "The shapes add_shape can create (box, cylinder, gear, thread, screw holes, …) with their parameters: key, label, default, type and allowed options."
+    },
+    {
+      "name": "add_shape",
+      "description": "Add a built-in shape."
+    },
+    {
+      "name": "sketch",
+      "description": "Create (or, with id, replace the profile of) a custom shape from a 2D profile drawn in the sketch XY plane."
+    },
+    {
+      "name": "update_object",
+      "description": "Change an object: parameters (only the ones given change), name, color, hole, visibility, position, rotation, scale, or a group's mode."
+    },
+    {
+      "name": "move",
+      "description": "Move objects in world space: by an offset, and/or drop them onto the bed, and/or center them on the bed."
+    },
+    {
+      "name": "combine",
+      "description": "Group objects into one part."
+    },
+    {
+      "name": "ungroup",
+      "description": "Split a group back into its objects (they keep their places)."
+    },
+    {
+      "name": "duplicate",
+      "description": "Copy objects."
+    },
+    {
+      "name": "delete_objects",
+      "description": "Delete objects (the user can undo it)."
+    },
+    {
+      "name": "set_variables",
+      "description": "Set design variables (numbers or expressions of other variables, e.g."
+    },
+    {
+      "name": "get_stats",
+      "description": "Size, volume, weight (at 100% infill), surface area, center of mass, triangle count and print warnings, for the given objects or the whole visible design."
+    },
+    {
+      "name": "screenshot",
+      "description": "Render the design (or just frame some objects) from a standard view and return the image, to check your work."
+    },
+    {
+      "name": "select",
+      "description": "Select objects in DraftOtter so the user sees which ones you mean (an empty list clears the selection)."
+    },
+    {
+      "name": "undo",
+      "description": "Undo (or with redo: true, redo) the last changes in DraftOtter."
+    },
+    {
+      "name": "export",
+      "description": "Export objects (default: the whole visible design, holes cut) to a file for printing: STL, 3MF or STEP."
+    }
+  ],
+  "keywords": [
+    "cad",
+    "3d printing",
+    "stl",
+    "3mf",
+    "design",
+    "modeling"
+  ],
+  "compatibility": {
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "port": {
+      "type": "number",
+      "title": "Port",
+      "description": "Port DraftOtter connects to (the same as in DraftOtter → Connect Claude → Advanced).",
+      "default": 47821,
+      "min": 1024,
+      "max": 65535,
+      "required": false
+    },
+    "export_dir": {
+      "type": "directory",
+      "title": "Export folder",
+      "description": "Where files that Claude exports (STL, 3MF, STEP) are saved when no full path is given.",
+      "default": "${HOME}/Downloads",
+      "required": false
+    }
+  }
+}

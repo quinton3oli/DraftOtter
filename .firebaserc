@@ -1,0 +1,13 @@
+{
+	"projects": {
+		"default": "localcad-8158c"
+	},
+	"targets": {
+		"localcad-8158c": {
+			"hosting": {
+				"app": ["localcad-8158c"],
+				"landing": ["draftotter"]
+			}
+		}
+	}
+}
