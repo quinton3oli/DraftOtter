@@ -1322,6 +1322,7 @@ export class Viewport {
 		for (const k of m.markers) this.helpers.remove(k);
 		m.markers = [];
 		m.ents = [];
+		m.anglePreview = false;
 		this.setMeasureLegs([]);
 		this.setFaceOutline('pick', null);
 		this.setFaceOutline('hover2', null);
@@ -1398,8 +1399,9 @@ export class Viewport {
 			return { a, b, main: `${fmt(v.length(), 3)} mm`, sub: `ΔX ${fmt(v.x, 3)} · ΔY ${fmt(v.y, 3)} · ΔZ ${fmt(v.z, 3)}`, legs: axisLegs(a, b), d: v };
 		}
 		if (A.kind === 'face' && B.kind === 'face' && Math.abs(A.n.dot(B.n)) < Math.cos((0.5 * Math.PI) / 180)) {
-			const ang = (Math.acos(Math.min(1, Math.abs(A.n.dot(B.n)))) * 180) / Math.PI;
-			return { a: pa, b: pb, main: `∠ ${fmt(ang, 2)}°`, sub: `faces at an angle · centers ${fmt(d.length(), 3)} mm apart · ${xyz}`, legs: axisLegs(pa, pb), d, angle: ang };
+			const fa = faceAngle(A, B);
+			const sub = `between the faces · ${fmt(180 - fa.angle, 2)}° the other way · centers ${fmt(d.length(), 3)} mm apart`;
+			return { a: pa, b: pb, main: `∠ ${fmt(fa.angle, 2)}°`, sub, legs: fa.legs, d, angle: fa.angle, angleKind: 'faces' };
 		}
 		const n = F.n.clone().normalize();
 		const perp = d.dot(n), foot = pa.clone().addScaledVector(n, perp), lat = pb.clone().sub(foot);
@@ -1415,15 +1417,19 @@ export class Viewport {
 		const m = this.measure;
 		for (const l of m.legs || []) { this.helpers.remove(l.line); l.line.geometry.dispose(); l.label.remove(); }
 		m.legs = legs.map((g) => {
-			const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([g.a, g.b]), new THREE.LineDashedMaterial({ color: g.color, depthTest: false, dashSize: 1, gapSize: 0.6 }));
+			// a straight dimension line, or an arc (pts) for angles; a leg without text has no label
+			const pts = g.pts || [g.a, g.b];
+			const mat = g.solid ? new THREE.LineBasicMaterial({ color: g.color, depthTest: false }) : new THREE.LineDashedMaterial({ color: g.color, depthTest: false, dashSize: 1, gapSize: 0.6 });
+			const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
 			line.computeLineDistances();
 			line.renderOrder = 21;
 			this.helpers.add(line);
 			const label = makeLabel('measure leg');
 			label.style.borderColor = '#' + g.color.toString(16).padStart(6, '0');
-			label.textContent = g.text;
+			label.textContent = g.text || '';
+			if (!g.text) label.style.visibility = 'hidden';
 			this.overlay.appendChild(label);
-			return { line, label, mid: g.a.clone().add(g.b).multiplyScalar(0.5) };
+			return { line, label, mid: g.pts ? g.pts[Math.floor(g.pts.length / 2)].clone() : g.a.clone().add(g.b).multiplyScalar(0.5) };
 		});
 		this.invalidate();
 	}
@@ -1544,8 +1550,35 @@ export class Viewport {
 		return s;
 	}
 
+	/** The angle at B between B→A and B→C (three picked points), with an arc at B. */
+	measureAngle3(A, B, C) {
+		const pa = A.p, pb = B.p, pc = C.p;
+		const u = pa.clone().sub(pb), v = pc.clone().sub(pb);
+		const lu = u.length(), lv = v.length();
+		if (lu < 1e-6 || lv < 1e-6) return null;
+		const ang = (Math.acos(Math.max(-1, Math.min(1, u.dot(v) / (lu * lv)))) * 180) / Math.PI;
+		const rad = Math.min(lu, lv) * 0.35;
+		const legs = [
+			{ a: pb.clone(), b: pa.clone(), color: 0x4fd1ff, text: fmt(lu, 3) },
+			{ a: pb.clone(), b: pc.clone(), color: 0x4fd1ff, text: fmt(lv, 3) },
+			{ pts: arcPoints(pb, u.clone().normalize(), v.clone().normalize(), rad), color: 0xffcc33, text: `${fmt(ang, 2)}°`, solid: true },
+		];
+		return { a: pb.clone(), b: pb.clone(), main: `∠ ${fmt(ang, 2)}°`, sub: `at the middle point · arms ${fmt(lu, 3)} and ${fmt(lv, 3)} mm · ${fmt(360 - ang, 2)}° the other way`, legs, d: v, angle: ang, angleKind: 'points', angle3: true };
+	}
+
 	measureHover(e) {
 		const m = this.measure;
+		if (m.ents && m.ents.length === 2 && !m.pin) {
+			if (e.shiftKey) {
+				// previewing the third point of an angle
+				const ent = this.measureEntity(e, false);
+				const res = ent && this.measureAngle3(m.ents[0], m.ents[1], ent);
+				if (res) { this.drawMeasure(m.ents[0], ent, false, res); m.anglePreview = true; }
+				return;
+			}
+			// Shift let go without a third click: back to the two-point measurement
+			if (m.anglePreview) { m.anglePreview = false; this.drawMeasure(m.ents[0], m.ents[1], true); }
+		}
 		const f = e.altKey ? null : this.measureFeature(e);
 		if (m.ents && m.ents.length === 1) {
 			// second pick: centers of round features snap; flat faces measure face to face
@@ -1578,6 +1611,19 @@ export class Viewport {
 		}
 		const ent = this.measureEntity(e, true);
 		if (!ent) return;
+		if (e.shiftKey && m.ents.length === 2 && !m.pin) {
+			// Shift + a third point: the angle at the second one
+			const res = this.measureAngle3(m.ents[0], m.ents[1], ent);
+			if (res) {
+				m.ents.push(ent);
+				m.pts.push(ent.p.clone());
+				this.measureMarker(ent.p);
+				this.setFaceOutline('hover2', null);
+				m.anglePreview = false;
+				this.drawMeasure(m.ents[0], ent, true, res);
+				return;
+			}
+		}
 		if (m.ents.length >= 2 || m.pin) this.clearMeasure();
 		this.setRoundOverlay('hover', null);
 		m.ents.push(ent);
@@ -1596,11 +1642,11 @@ export class Viewport {
 	}
 
 	/** Draw the measurement between two picks (points as plain vectors also work). */
-	drawMeasure(A, B, final) {
+	drawMeasure(A, B, final, result = null) {
 		const m = this.measure;
 		if (A.isVector3) A = { kind: 'point', p: A };
 		if (B.isVector3) B = { kind: 'point', p: B };
-		const r = this.measureResult(A, B);
+		const r = result || this.measureResult(A, B);
 		if (!m.line) {
 			m.line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffcc33, depthTest: false, transparent: true, opacity: 0.55 }));
 			m.line.renderOrder = 20;
@@ -1615,7 +1661,7 @@ export class Viewport {
 		m.final = final;
 		m.result = r;
 		this.setMeasureLegs(r.legs);
-		if (final && m.pts.length === 2) { m.pts[0] = r.a.clone(); m.pts[1] = r.b.clone(); }
+		if (final && m.pts.length === 2 && !r.angle3) { m.pts[0] = r.a.clone(); m.pts[1] = r.b.clone(); }
 		this.app.onMeasure(r.d, final, r);
 		this.invalidate();
 	}
@@ -1834,6 +1880,44 @@ export class Viewport {
 }
 
 // Orthonormal frame for a plane: n = normal, x = world X projected onto the plane (or Y if X is the normal).
+/** Points on an arc of radius r around center c, from unit direction u to unit direction v (the short way). */
+function arcPoints(c, u, v, r, n = 32) {
+	const ang = Math.acos(Math.max(-1, Math.min(1, u.dot(v))));
+	let axis = u.clone().cross(v);
+	if (axis.lengthSq() < 1e-12) { axis = new THREE.Vector3(0, 0, 1).cross(u); if (axis.lengthSq() < 1e-6) axis = new THREE.Vector3(1, 0, 0).cross(u); }
+	axis.normalize();
+	return Array.from({ length: n + 1 }, (_, i) => c.clone().addScaledVector(u.clone().applyAxisAngle(axis, (ang * i) / n), r));
+}
+
+/**
+ * The angle between two flat faces, measured where their planes meet: from that line toward each face's center
+ * (90° for two sides of a box, 120° for two sides of a hexagon, 30° for the sharp edge of a 30° wedge). Comes with
+ * dashed lines from the meeting line toward each face and an arc between them.
+ */
+function faceAngle(A, B) {
+	const na = A.n.clone().normalize(), nb = B.n.clone().normalize();
+	const normals = (Math.acos(Math.max(-1, Math.min(1, na.dot(nb)))) * 180) / Math.PI;
+	const u = na.clone().cross(nb).normalize();
+	const da = na.dot(A.c), db = nb.dot(B.c), k = na.dot(nb), den = 1 - k * k;
+	// a point on both planes, slid along their meeting line to beside the two faces
+	const p = na.clone().multiplyScalar((da - db * k) / den).addScaledVector(nb, (db - da * k) / den);
+	const mid = A.c.clone().add(B.c).multiplyScalar(0.5);
+	p.addScaledVector(u, mid.clone().sub(p).dot(u));
+	const toward = (c) => { const w = c.clone().sub(p); w.addScaledVector(u, -w.dot(u)); return w; };
+	const wa = toward(A.c), wb = toward(B.c);
+	const la = wa.length(), lb = wb.length();
+	if (la < 1e-6 || lb < 1e-6) return { angle: 180 - normals, legs: [] };
+	wa.normalize(); wb.normalize();
+	const angle = (Math.acos(Math.max(-1, Math.min(1, wa.dot(wb)))) * 180) / Math.PI;
+	const rad = Math.min(la, lb) * 0.6;
+	const legs = [
+		{ a: p.clone(), b: p.clone().addScaledVector(wa, Math.min(la, rad * 1.4)), color: 0x4fd1ff },
+		{ a: p.clone(), b: p.clone().addScaledVector(wb, Math.min(lb, rad * 1.4)), color: 0x4fd1ff },
+		{ pts: arcPoints(p, wa, wb, rad), color: 0xffcc33, text: `${fmt(angle, 2)}°`, solid: true },
+	];
+	return { angle, legs };
+}
+
 export function planeBasis(normal) {
 	const n = normal.clone().normalize();
 	let x = new THREE.Vector3(1, 0, 0).projectOnPlane(n);

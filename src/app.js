@@ -636,8 +636,13 @@ class App {
 	}
 
 	onMeasure(d, final, r) {
-		const head = r && r.perp != null ? `Gap ⊥ ${fmt(r.perp, 3)} mm   offset ${fmt(r.offset, 3)} mm   direct ${fmt(d.length(), 3)} mm` : r && r.angle != null ? `Angle ${fmt(r.angle, 2)}°   centers ${fmt(d.length(), 3)} mm apart` : `Distance ${fmt(d.length(), 3)} mm`;
-		$('#st-hint').textContent = `${head}   ΔX ${fmt(d.x, 3)}  ΔY ${fmt(d.y, 3)}  ΔZ ${fmt(d.z, 3)}` + (final ? '   — click to start a new measurement' : '');
+		if (r && r.angleKind) {
+			const what = r.angleKind === 'points' ? 'at the middle point' : 'between the faces';
+			$('#st-hint').textContent = `Angle ${fmt(r.angle, 2)}° ${what}` + (final ? '   — click to start a new measurement' : r.angleKind === 'points' ? '   (Shift-click to place the third point)' : '');
+			return;
+		}
+		const head = r && r.perp != null ? `Gap ⊥ ${fmt(r.perp, 3)} mm   offset ${fmt(r.offset, 3)} mm   direct ${fmt(d.length(), 3)} mm` : `Distance ${fmt(d.length(), 3)} mm`;
+		$('#st-hint').textContent = `${head}   ΔX ${fmt(d.x, 3)}  ΔY ${fmt(d.y, 3)}  ΔZ ${fmt(d.z, 3)}` + (final ? '   — click to start a new measurement, or Shift-click a third point for the angle at the second' : '');
 	}
 
 	onObjectsTransformed(updates, wasScale) {
@@ -1977,7 +1982,7 @@ class App {
 		if (this.tool !== 'sympoint') { this.hideSymBar(); this.symPending = null; this.symRepick = null; }
 		document.querySelectorAll('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === this.tool));
 		document.querySelectorAll('[data-tools]').forEach((b) => b.classList.toggle('active', !!this.tool && b.dataset.tools.split(',').includes(this.tool)));
-		$('#st-hint').textContent = this.tool === 'measure' ? 'Measure: click two faces for the gap ⊥ between them and their sideways offset, or two points (corners and circle centers snap) for the distance and its X / Y / Z legs. Click a round edge, hole, cylinder or sphere for its diameter. Alt = free point. Esc to exit.'
+		$('#st-hint').textContent = this.tool === 'measure' ? 'Measure: click two faces for the gap ⊥ between them (or the angle between them), or two points (corners and circle centers snap) for the distance and its X / Y / Z legs, then Shift-click a third point for the angle at the second. Click a round edge, hole, cylinder or sphere for its diameter. Alt = free point. Esc to exit.'
 			: this.tool === 'place' ? 'Place on face: click any face or the bed to set the selection onto it. Esc to cancel.'
 				: this.tool === 'align' ? 'Align: red dots = X, green = Y, blue = Z. Esc or Done to finish.'
 					: this.tool === 'workplane' ? 'Workplane: click a face to build on it, or click the bed to go back to the bed. Esc to cancel.'
@@ -2888,7 +2893,7 @@ class App {
 				]), 'has-menu', null, { tools: 'sketchface,holewiz,paint,sympoint' }],
 			],
 			[
-				['ruler', 'Measure', 'Measure distances and diameters (M)', () => this.setTool('measure'), '', null, { tool: 'measure' }],
+				['ruler', 'Measure', 'Measure distances, angles and diameters (M)', () => this.setTool('measure'), '', null, { tool: 'measure' }],
 				['check', 'Inspect', 'Inspect: Check for printing, interference, section view, overhangs, center of mass, 2D drawing', m(() => [
 					['Check for printing…', () => this.checkPrint()],
 					['Interference check (overlapping parts)', () => this.interferenceCheck()],
