@@ -44,14 +44,14 @@ await app(() => navigator.serviceWorker.ready);
 await page.reload();
 await ready();
 check('the service worker is installed and in control', await app(() => !!navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL.endsWith('/sw.js')));
-const cached = await app(async () => { const keys = await caches.keys(); const c = await caches.open(keys.find((k) => k.startsWith('localcad-'))); return (await c.keys()).map((r) => new URL(r.url).pathname); });
+const cached = await app(async () => { const keys = await caches.keys(); const c = await caches.open(keys.find((k) => k.startsWith('draftotter-'))); return (await c.keys()).map((r) => new URL(r.url).pathname); });
 check('…with the app and icons cached', cached.includes('/') && cached.includes('/icons/draftotter-512.png'), cached.join());
 
 // offline: the app still opens and works
 await page.setOfflineMode(true);
 await page.reload();
 await ready();
-const off = await app(() => { const a = window.LocalCAD; a.addShape('box'); return a.model.nodes.length > 0 && !!a.engine.geometry(a.model.nodes[a.model.nodes.length - 1]); });
+const off = await app(() => { const a = window.DraftOtter; a.addShape('box'); return a.model.nodes.length > 0 && !!a.engine.geometry(a.model.nodes[a.model.nodes.length - 1]); });
 check('with no network, the app still opens and builds shapes', off);
 await page.setOfflineMode(false);
 
@@ -64,11 +64,11 @@ const navigated = page.waitForNavigation({ timeout: 30000 }).catch(() => null);
 await app(() => [...document.querySelectorAll('.update-toast .btn')].find((b) => /Reload/.test(b.textContent)).click());
 await navigated;
 await ready();
-const now = await app(async () => (await caches.keys()).filter((k) => k.startsWith('localcad-')));
-check('…and "Reload to update" switches to it (old cache cleared)', now.join() === 'localcad-next-build', now.join());
+const now = await app(async () => (await caches.keys()).filter((k) => k.startsWith('draftotter-')));
+check('…and "Reload to update" switches to it (old cache cleared)', now.join() === 'draftotter-next-build', now.join());
 
 // the Connect Claude dialog on the web links the helper downloads
-await app(() => window.LocalCAD.claudeDialog());
+await app(() => window.DraftOtter.claudeDialog());
 const links = await app(async () => Promise.all([...document.querySelectorAll('.claude-form a[download]')].map(async (a) => [a.getAttribute('href'), (await fetch(a.href)).status])));
 check('Connect Claude offers the extension and helper as downloads', links.length === 2 && links.every(([, s]) => s === 200), JSON.stringify(links));
 
@@ -88,7 +88,7 @@ const fresh = async ({ ua, outcome = 'accepted', dialogAtReady = false } = {}) =
 		new MutationObserver(() => {
 			if (!window.__readyAt && document.body && document.body.classList.contains('ready')) {
 				window.__readyAt = performance.now();
-				if (dialogAtReady) window.LocalCAD.settingsDialog(); // something open the moment the app is ready
+				if (dialogAtReady) window.DraftOtter.settingsDialog(); // something open the moment the app is ready
 			}
 			if (!window.__cardAt && document.querySelector('#install-card')) window.__cardAt = performance.now();
 		}).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
@@ -135,20 +135,20 @@ await s.ctx.close();
 s = await fresh();
 await s.p.waitForSelector('#install-card', { timeout: 10000 }).catch(() => null);
 await s.ev(() => [...document.querySelectorAll('#install-card .btn')].find((b) => b.textContent === 'Not now').click());
-check('Not now closes it and remembers', (await card(s.ev)) === null && await s.ev(() => JSON.parse(localStorage.getItem('localcad-install-prompt')).later > 0));
+check('Not now closes it and remembers', (await card(s.ev)) === null && await s.ev(() => JSON.parse(localStorage.getItem('draftotter-install-prompt')).later > 0));
 await s.p.reload();
 await s.p.waitForFunction(() => document.body.classList.contains('ready'), { timeout: 60000 });
 await wait(6000);
 check('…so it doesn\'t come back on the next visit (the status bar button stays)', (await card(s.ev)) === null && await s.ev(() => !!document.querySelector('#st-install')));
-await s.ev(() => { localStorage.removeItem('localcad-install-prompt'); window.LocalCAD.showInstallCard(); });
+await s.ev(() => { localStorage.removeItem('draftotter-install-prompt'); window.DraftOtter.showInstallCard(); });
 await s.p.keyboard.press('Escape');
-check('Esc counts as "not now"', (await card(s.ev)) === null && await s.ev(() => JSON.parse(localStorage.getItem('localcad-install-prompt')).later > 0));
-await s.ev(() => { localStorage.removeItem('localcad-install-prompt'); window.LocalCAD.showInstallCard(); });
+check('Esc counts as "not now"', (await card(s.ev)) === null && await s.ev(() => JSON.parse(localStorage.getItem('draftotter-install-prompt')).later > 0));
+await s.ev(() => { localStorage.removeItem('draftotter-install-prompt'); window.DraftOtter.showInstallCard(); });
 await s.p.mouse.click(20, 20);
-check('…and so does clicking outside the card', (await card(s.ev)) === null && await s.ev(() => JSON.parse(localStorage.getItem('localcad-install-prompt')).later > 0));
-check('…but it does after two weeks', await s.ev(() => { localStorage.setItem('localcad-install-prompt', JSON.stringify({ later: Date.now() - 15 * 864e5 })); return window.LocalCAD.shouldOfferInstall(); }));
-await s.ev(() => { localStorage.removeItem('localcad-install-prompt'); window.LocalCAD.showInstallCard(); [...document.querySelectorAll('#install-card .btn')].find((b) => /ask again/.test(b.textContent)).click(); });
-check('Don\'t ask again: never on its own again', await s.ev(() => !window.LocalCAD.shouldOfferInstall() && JSON.parse(localStorage.getItem('localcad-install-prompt')).never === true));
+check('…and so does clicking outside the card', (await card(s.ev)) === null && await s.ev(() => JSON.parse(localStorage.getItem('draftotter-install-prompt')).later > 0));
+check('…but it does after two weeks', await s.ev(() => { localStorage.setItem('draftotter-install-prompt', JSON.stringify({ later: Date.now() - 15 * 864e5 })); return window.DraftOtter.shouldOfferInstall(); }));
+await s.ev(() => { localStorage.removeItem('draftotter-install-prompt'); window.DraftOtter.showInstallCard(); [...document.querySelectorAll('#install-card .btn')].find((b) => /ask again/.test(b.textContent)).click(); });
+check('Don\'t ask again: never on its own again', await s.ev(() => !window.DraftOtter.shouldOfferInstall() && JSON.parse(localStorage.getItem('draftotter-install-prompt')).never === true));
 await s.ctx.close();
 
 s = await fresh({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });

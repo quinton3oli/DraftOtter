@@ -18,7 +18,7 @@ for (const SEED of SEEDS) {
 	page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + ' ' + (e.stack || '').split('\n').slice(1, 4).join(' ')));
 	page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 	page.on('dialog', (d) => d.accept());
-	await page.goto(pathToFileURL('LocalCAD.html').href);
+	await page.goto(pathToFileURL('DraftOtter.html').href);
 	await page.waitForFunction(() => document.body.classList.contains('ready'));
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();

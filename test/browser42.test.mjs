@@ -7,19 +7,19 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 
-const pool = await app(async () => { const p = window.LocalCAD.engine.pool; await p.start(); return { ok: p.ok, n: p.workers.length }; });
+const pool = await app(async () => { const p = window.DraftOtter.engine.pool; await p.start(); return { ok: p.ok, n: p.workers.length }; });
 check('background geometry workers start', pool.ok && pool.n >= 1, JSON.stringify(pool));
 
 // four plates, each cut by a torus hole with a fit (no shortcut: the slow general growth); fresh clearances each
 // time so nothing comes from the saved-shape cache
 await app(() => {
-	const a = window.LocalCAD; a.model.settings.backgroundBuild = false; a.model.doc.nodes = [];
+	const a = window.DraftOtter; a.model.settings.backgroundBuild = false; a.model.doc.nodes = [];
 	for (let i = 0; i < 4; i++) {
 		a.addShape('box'); a.addShape('torus');
 		const [b, t] = a.model.nodes.slice(-2);
@@ -28,14 +28,14 @@ await app(() => {
 		a.commit(); a.setSelection([b.id, t.id]); a.group(); a.model.nodes[a.model.nodes.length - 1].name = 'Plate ' + (i + 1);
 	}
 });
-const vols = () => app(() => window.LocalCAD.model.nodes.map((n) => +window.LocalCAD.engine.stats([n]).volume.toFixed(3)));
+const vols = () => app(() => window.DraftOtter.model.nodes.map((n) => +window.DraftOtter.engine.stats([n]).volume.toFixed(3)));
 const vSync = await vols();
 // the same design rebuilt by the workers
-const vAsync = await app(async () => { const a = window.LocalCAD, E = a.engine; E.cache.clear(); E.lastById.clear(); await E.buildAsync(a.model.nodes); return a.model.nodes.map((n) => +E.stats([n]).volume.toFixed(3)); });
+const vAsync = await app(async () => { const a = window.DraftOtter, E = a.engine; E.cache.clear(); E.lastById.clear(); await E.buildAsync(a.model.nodes); return a.model.nodes.map((n) => +E.stats([n]).volume.toFixed(3)); });
 check('built in the background, the result matches building on the main thread', vAsync.every((v, i) => Math.abs(v - vSync[i]) < 0.05), JSON.stringify({ vSync, vAsync }));
 // equal work, one after another vs in parallel
 const speed = await app(async () => {
-	const a = window.LocalCAD, E = a.engine, p = E.pool, rings = () => a.model.nodes.map((n) => n.children[1]);
+	const a = window.DraftOtter, E = a.engine, p = E.pool, rings = () => a.model.nodes.map((n) => n.children[1]);
 	const fresh = () => { for (const r of rings()) r.fitClearance = 0.3 + Math.random() * 0.05; };
 	fresh(); E.setPool(null); let t0 = performance.now(); await E.buildAsync(a.model.nodes); const seq = performance.now() - t0; E.setPool(p);
 	fresh(); t0 = performance.now(); await E.buildAsync(a.model.nodes); const par = performance.now() - t0;
@@ -47,7 +47,7 @@ check(`…in parallel: faster than one after another (${speed.seq} ms → ${spee
 // work happens on the page meanwhile (handles and picking use the last shape until the new one is ready)
 const before = await vols();
 const edit = await app(async () => {
-	const a = window.LocalCAD, E = a.engine; a.model.settings.backgroundBuild = true; a.afterChange();
+	const a = window.DraftOtter, E = a.engine; a.model.settings.backgroundBuild = true; a.afterChange();
 	const ring = a.model.nodes[2].children[1];
 	ring.fitClearance += 0.0037;
 	const og = E.geometry.bind(E), slowHere = [];
@@ -64,7 +64,7 @@ const v2 = await vols();
 check('…with the right result (only the edited plate changes)', Math.abs(v2[2] - before[2]) > 0.01 && Math.abs(v2[0] - before[0]) < 1e-6, JSON.stringify({ before, after: v2 }));
 // edits made while a build runs are picked up before drawing
 const twice = await app(async () => {
-	const a = window.LocalCAD; const r1 = a.model.nodes[1].children[1], r3 = a.model.nodes[3].children[1];
+	const a = window.DraftOtter; const r1 = a.model.nodes[1].children[1], r3 = a.model.nodes[3].children[1];
 	r1.fitClearance += 0.0041; a.commit();
 	r3.fitClearance += 0.0043; a.commit();
 	await a.bgBuild;
@@ -72,7 +72,7 @@ const twice = await app(async () => {
 });
 check('changes made during a build are included before drawing', twice.every(Boolean), JSON.stringify(twice));
 // quick edits stay on the main thread
-const quick = await app(() => { const a = window.LocalCAD; a.addShape('box'); return !a.bgBuild; });
+const quick = await app(() => { const a = window.DraftOtter; a.addShape('box'); return !a.bgBuild; });
 check('quick edits still update at once', quick);
 
 check('no page errors', errors.length === 0, errors.join(' | '));

@@ -8,7 +8,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -19,7 +19,7 @@ const texts = () => app(() => [...document.querySelectorAll('.dw-preview svg tex
 // click a model point (view coordinates) on the sheet preview
 const clickView = async (view, x, y) => {
 	const p = await app(([view, x, y]) => {
-		const dw = window.LocalCAD.drawingState.dw, b = dw.boxes[view];
+		const dw = window.DraftOtter.drawingState.dw, b = dw.boxes[view];
 		const sx = b.px + (x - b.box[0]) * b.s, sy = dw.h - (b.py + (y - b.box[1]) * b.s);
 		const svg = document.querySelector('.dw-preview svg'), pt = svg.createSVGPoint(); pt.x = sx; pt.y = sy;
 		const q = pt.matrixTransform(svg.getScreenCTM());
@@ -31,7 +31,7 @@ const clickView = async (view, x, y) => {
 
 // a plate 60 × 40 × 8 with a Ø8 hole and a Ø16 × 12 boss
 await app(() => {
-	localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = []; a.model.doc.drawing = null; a.commit();
+	localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = []; a.model.doc.drawing = null; a.commit();
 	a.addShape('box'); a.addShape('cylinder'); a.addShape('cylinder');
 	const [b, h, boss] = a.model.nodes; b.params.w = 60; b.params.d = 40; b.params.h = 8; b.pos = [0, 0, 4];
 	h.params.r = 4; h.params.h = 30; h.pos = [-15, 0, 4]; h.hole = true; boss.params.r = 8; boss.params.h = 12; boss.pos = [15, 0, 14];
@@ -42,7 +42,7 @@ await wait(1500);
 await app(() => { const cb = [...document.querySelectorAll('.dw-opts label')].find((l) => /Section/.test(l.textContent)).querySelector('input'); cb.checked = true; cb.dispatchEvent(new Event('change')); });
 await wait(1500);
 let t = await texts();
-const sec = await app(() => { const v = window.LocalCAD.drawingState.views.section; return { lines: v && v.lines.length, hatch: v && v.hatch.length, cut: v && v.cut }; });
+const sec = await app(() => { const v = window.DraftOtter.drawingState.views.section; return { lines: v && v.lines.length, hatch: v && v.hatch.length, cut: v && v.cut }; });
 check('section A–A view with its label and the cut line on the top view', t.includes('SECTION A–A') && t.filter((x) => x === 'A').length === 2 && sec.lines > 4 && sec.cut === 0, JSON.stringify(sec));
 check('the cut faces are hatched (plate and boss with the hole open)', sec.hatch >= 2, JSON.stringify(sec));
 
@@ -58,7 +58,7 @@ await clickView('front', 7.3, 8.2); // near the boss's left foot (7, 8)
 await clickView('front', 7.2, 19.7); // near its top-left corner (7, 20)
 t = await texts();
 check('two clicks add a snapped dimension (boss height 12)', t.includes('12'), t.filter((x) => /^\d/.test(x)).join('|'));
-const dims = await app(() => window.LocalCAD.model.doc.drawing.dims.length);
+const dims = await app(() => window.DraftOtter.model.doc.drawing.dims.length);
 check('dimensions are saved with the design', dims === 1);
 await shot('290-drawing-section-detail-dims');
 
@@ -66,9 +66,9 @@ await shot('290-drawing-section-detail-dims');
 await app(() => [...document.querySelectorAll('.dw-opts .btn')].find((b) => /Dimension/.test(b.textContent)).click());
 await app(() => document.querySelector('.dw-preview [data-dim]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
 await wait(300);
-check('clicking a dimension removes it', await app(() => window.LocalCAD.model.doc.drawing.dims.length === 0 && !document.querySelector('.dw-preview [data-dim]')));
+check('clicking a dimension removes it', await app(() => window.DraftOtter.model.doc.drawing.dims.length === 0 && !document.querySelector('.dw-preview [data-dim]')));
 // reopen: section + detail are remembered
-await app(() => { document.querySelector('.modal .icon-btn').click(); window.LocalCAD.drawingDialog(); });
+await app(() => { document.querySelector('.modal .icon-btn').click(); window.DraftOtter.drawingDialog(); });
 await wait(2500);
 t = await texts();
 check('reopening keeps the section and the detail', t.includes('SECTION A–A') && t.some((x) => /^DETAIL B/.test(x)), '');

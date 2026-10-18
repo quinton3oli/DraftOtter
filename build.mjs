@@ -1,4 +1,4 @@
-// Bundles src/ into a single self-contained, offline app (LocalCAD.html during development; DraftOtter.html in the
+// Bundles src/ into a single self-contained, offline app (DraftOtter.html; the same file in the
 // download package).
 import * as esbuild from 'esbuild';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -76,7 +76,7 @@ async function build() {
 		define: { 'import.meta.url': '"file:///csgworker.js"' }, // the wasm bytes are passed in, nothing is fetched
 	});
 	workerCode = w.outputFiles[0].text;
-	options.define.__LOCALCAD_BUILD__ = JSON.stringify(buildId());
+	options.define.__DRAFTOTTER_BUILD__ = JSON.stringify(buildId());
 	const res = await esbuild.build(options);
 	const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\/script');
 	const css = readFileSync('src/style.css', 'utf8');
@@ -85,8 +85,8 @@ async function build() {
 		.replace('/*__JS__*/', () => js)
 		// the otter badge (top bar, tab icon, loading screen), inlined so the app stays one file
 		.replaceAll('__BRAND_BADGE__', 'data:image/png;base64,' + readFileSync('src/assets/brand-badge.png').toString('base64'));
-	writeFileSync('LocalCAD.html', html);
-	console.log(`LocalCAD.html written (${(html.length / 1024 / 1024).toFixed(2)} MB)`);
+	writeFileSync('DraftOtter.html', html);
+	console.log(`DraftOtter.html written (${(html.length / 1024 / 1024).toFixed(2)} MB)`);
 }
 
 await build();

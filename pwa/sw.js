@@ -1,7 +1,7 @@
 // DraftOtter service worker: keeps the app (one HTML file plus icons) on the device so it opens and works offline.
 // A new deploy changes BUILD, which installs a new copy in the background; the page then offers to reload.
 const BUILD = '__BUILD__';
-const CACHE = 'localcad-' + BUILD;
+const CACHE = 'draftotter-' + BUILD;
 const ASSETS = ['./', './manifest.webmanifest', './icons/draftotter-192.png', './icons/draftotter-512.png', './icons/draftotter-maskable-512.png', './icons/draftotter-apple-touch.png'];
 
 self.addEventListener('install', (e) => {
@@ -12,7 +12,8 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
 	e.waitUntil((async () => {
-		for (const k of await caches.keys()) if (k.startsWith('localcad-') && k !== CACHE) await caches.delete(k);
+		// old versions' caches (localcad-…: from before the rename)
+		for (const k of await caches.keys()) if ((k.startsWith('draftotter-') || k.startsWith('localcad-')) && k !== CACHE) await caches.delete(k);
 		await self.clients.claim();
 	})());
 });

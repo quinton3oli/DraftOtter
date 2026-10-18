@@ -1,6 +1,6 @@
 {
   "manifest_version": "0.3",
-  "name": "localcad",
+  "name": "draftotter",
   "display_name": "DraftOtter",
   "version": "1.1.0",
   "description": "Let Claude design 3D-printable parts in DraftOtter, the offline CAD app open in your browser.",
@@ -11,15 +11,15 @@
   "icon": "icon.png",
   "server": {
     "type": "node",
-    "entry_point": "localcad-mcp.mjs",
+    "entry_point": "draftotter-mcp.mjs",
     "mcp_config": {
       "command": "node",
       "args": [
-        "${__dirname}/localcad-mcp.mjs"
+        "${__dirname}/draftotter-mcp.mjs"
       ],
       "env": {
-        "LOCALCAD_PORT": "${user_config.port}",
-        "LOCALCAD_EXPORT_DIR": "${user_config.export_dir}"
+        "DRAFTOTTER_PORT": "${user_config.port}",
+        "DRAFTOTTER_EXPORT_DIR": "${user_config.export_dir}"
       }
     }
   },

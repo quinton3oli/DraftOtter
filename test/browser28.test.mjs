@@ -14,7 +14,7 @@ await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath:
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -26,7 +26,7 @@ const waitFile = async (re) => { for (let i = 0; i < 60; i++) { const f = readdi
 
 // ---------------------------------------------------------------- timeline
 await app(() => {
-	localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = []; a.model.doc.rollback = null; a.commit();
+	localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = []; a.model.doc.rollback = null; a.commit();
 	a.addShape('box'); const b = a.model.nodes[0]; b.params.w = 40; b.params.d = 30; b.params.h = 10; b.pos = [0, 0, 5]; a.commit();
 	a.addShape('cylinder'); const c = a.model.nodes[1]; c.params.r = 5; c.params.h = 30; c.pos = [-10, 0, 5]; c.hole = true; a.commit();
 	a.setSelection([b.id, c.id]); a.group();
@@ -34,7 +34,7 @@ await app(() => {
 	a.setLeftTab('timeline');
 });
 await wait(300);
-const vol = () => app(() => +window.LocalCAD.engine.stats(window.LocalCAD.model.nodes.filter((n) => n.visible)).volume.toFixed(1));
+const vol = () => app(() => +window.DraftOtter.engine.stats(window.DraftOtter.model.nodes.filter((n) => n.visible)).volume.toFixed(1));
 const rows = await app(() => [...document.querySelectorAll('#timeline .tl-row .tl-name')].map((r) => r.firstChild.textContent));
 check('timeline lists every step in creation order', rows.join() === 'Box,Cylinder,Cut,Sphere', rows.join());
 await shot('220-timeline');
@@ -56,21 +56,21 @@ check('rolling back greys out later steps and shows the marker', rb.banner && rb
 const rolled = await vol();
 check('rolled-back sphere is not part of the design', Math.abs(rolled - (full - (4 / 3) * Math.PI * 216)) < 15, `${full} → ${rolled}`);
 // insert a new step at the rollback point
-await app(() => { const a = window.LocalCAD; a.addShape('cone'); a.setSelection([]); });
+await app(() => { const a = window.DraftOtter; a.addShape('cone'); a.setSelection([]); });
 await wait(300);
 const ins = await app(() => [...document.querySelectorAll('#timeline .tl-row')].map((r) => r.querySelector('.tl-name').firstChild.textContent + (r.classList.contains('after') ? '(off)' : '')));
 check('a new step is inserted at the rollback point', ins.join() === 'Box,Cylinder,Cut,Cone,Sphere(off)', ins.join());
 await app(() => [...document.querySelectorAll('.tl-banner .btn')][0].click());
 await wait(300);
-const end = await app(() => ({ rb: window.LocalCAD.model.doc.rollback, after: document.querySelectorAll('#timeline .tl-row.after').length }));
+const end = await app(() => ({ rb: window.DraftOtter.model.doc.rollback, after: document.querySelectorAll('#timeline .tl-row.after').length }));
 check('roll to end switches everything back on', end.rb === null && end.after === 0, JSON.stringify(end));
-const und = await app(() => { const a = window.LocalCAD; a.undo(); return a.model.doc.rollback !== null; });
+const und = await app(() => { const a = window.DraftOtter; a.undo(); return a.model.doc.rollback !== null; });
 check('rollback is part of undo', und);
-await app(() => { const a = window.LocalCAD; a.model.doc.rollback = null; a.commit(); a.setLeftTab('objects'); });
+await app(() => { const a = window.DraftOtter; a.model.doc.rollback = null; a.commit(); a.setLeftTab('objects'); });
 
 // ---------------------------------------------------------------- drawing
 await app(() => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.commit();
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.commit();
 	a.addShape('box'); a.addShape('cylinder'); a.addShape('cylinder');
 	const [b, h, boss] = a.model.nodes; b.params.w = 60; b.params.d = 40; b.params.h = 8; b.pos = [0, 0, 4]; b.name = 'Plate';
 	h.params.r = 4; h.params.h = 30; h.pos = [-15, 0, 4]; h.hole = true; boss.params.r = 8; boss.params.h = 12; boss.pos = [15, 0, 14];

@@ -12,14 +12,14 @@ const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message + ' ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 page.on('dialog', (d) => d.accept());
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 await page.evaluate(() => localStorage.clear());
 await page.reload();
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 
 const result = await page.evaluate(async ({ SEED, STEPS }) => {
-	const a = window.LocalCAD;
+	const a = window.DraftOtter;
 	let s = SEED >>> 0;
 	const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 	const pick = (arr) => arr[Math.floor(rnd() * arr.length)];

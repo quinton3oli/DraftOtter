@@ -7,7 +7,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
@@ -15,7 +15,7 @@ const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok 
 
 // grow one hole both ways: fast paths on and off; report added volume, size and time
 const compare = (label, build, axes, clr = 0.4) => app(([build, axes, clr]) => {
-	const a = window.LocalCAD, E = a.engine;
+	const a = window.DraftOtter, E = a.engine;
 	a.model.doc.nodes = []; a.commit();
 	// eslint-disable-next-line no-new-func
 	const n = new Function('a', build)(a);
@@ -55,15 +55,15 @@ check('two separate spheres: each grown on its own, same result', same(r), show(
 
 // a shape with no shortcut (torus): kept across a reload
 const t1 = await app(() => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.addShape('torus'); const n = a.model.nodes[0]; n.hole = true; n.fit = 'custom'; n.fitClearance = 0.4; n.fitAxes = 'xy';
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.addShape('torus'); const n = a.model.nodes[0]; n.hole = true; n.fit = 'custom'; n.fitClearance = 0.4; n.fitAxes = 'xy';
 	a.engine.cache.clear(); const t0 = performance.now(); a.engine.geometry(n); const ms = performance.now() - t0; a.commit(); a.autosaveNow(); return Math.round(ms);
 });
 await new Promise((res) => setTimeout(res, 800)); // let the background save finish
 await page.reload();
 await page.waitForFunction(() => document.body.classList.contains('ready'));
-const t2 = await app(() => { const a = window.LocalCAD, n = a.model.nodes[0]; a.engine.cache.clear(); const t0 = performance.now(); const g = a.engine.geometry(n); return { ms: Math.round(performance.now() - t0), fit: n.fit, tris: g.attributes.position.count }; });
+const t2 = await app(() => { const a = window.DraftOtter, n = a.model.nodes[0]; a.engine.cache.clear(); const t0 = performance.now(); const g = a.engine.geometry(n); return { ms: Math.round(performance.now() - t0), fit: n.fit, tris: g.attributes.position.count }; });
 check('a slow grown hole is reused after reloading the page', t2.fit === 'custom' && t2.ms < 100 && t1 > 300, JSON.stringify({ first: t1, afterReload: t2 }));
-const t3 = await app(() => { const a = window.LocalCAD, n = a.model.nodes[0]; n.fitClearance = 0.5; a.engine.cache.clear(); const t0 = performance.now(); a.engine.geometry(n); return Math.round(performance.now() - t0); });
+const t3 = await app(() => { const a = window.DraftOtter, n = a.model.nodes[0]; n.fitClearance = 0.5; a.engine.cache.clear(); const t0 = performance.now(); a.engine.geometry(n); return Math.round(performance.now() - t0); });
 check('…but a changed clearance is grown again', t3 > 300, String(t3));
 
 check('no page errors', errors.length === 0, errors.join(' | '));

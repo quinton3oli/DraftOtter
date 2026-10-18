@@ -8,7 +8,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -26,7 +26,7 @@ const regions = () => app(() => {
 	return window.__lcadTest.profileRegions({ v: 2, points: s.points, segs: s.segs, circles: s.circles, cons: s.cons, radii: s.radii }).map((r) => ({ a: +area(r.outer).toFixed(2), holes: r.holes.map((h) => +area(h).toFixed(2)) }));
 });
 const fresh = async () => {
-	await app(() => { document.querySelectorAll('.modal-back').forEach((d) => d.remove()); window.LocalCAD.newSketch(); });
+	await app(() => { document.querySelectorAll('.modal-back').forEach((d) => d.remove()); window.DraftOtter.newSketch(); });
 	await wait(300);
 	await app(() => { const s = document.querySelector('.modal-back').__sketch.st; s.points.length = 0; s.segs.length = 0; s.circles.length = 0; s.cons.length = 0; });
 };
@@ -100,15 +100,15 @@ await app(() => document.querySelectorAll('.modal-back').forEach((d) => d.remove
 
 // ---------------------------------------------------------------- face edges: sketch on a face with a hole
 await app(() => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.commit();
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.commit();
 	a.addShape('box'); a.addShape('cylinder');
 	const [b, c] = a.model.nodes; b.params.w = 30; b.params.d = 30; b.params.h = 10; b.pos = [0, 0, 5]; c.params.r = 5; c.params.h = 20; c.pos = [0, 0, 5]; c.hole = true; a.commit();
 	a.setSelection([b.id, c.id]); a.group(); a.setSelection([]); a.vp.setView('top'); a.frame();
 });
 await wait(900);
 const cv = await (await page.$('#viewport canvas')).boundingBox();
-const sp = await app(() => { const vp = window.LocalCAD.vp; vp.render(); return vp.project(vp.camera.position.clone().set(10, 10, 10)); });
-await app(() => window.LocalCAD.setTool('sketchface'));
+const sp = await app(() => { const vp = window.DraftOtter.vp; vp.render(); return vp.project(vp.camera.position.clone().set(10, 10, 10)); });
+await app(() => window.DraftOtter.setTool('sketchface'));
 await page.mouse.click(cv.x + sp.x, cv.y + sp.y);
 await wait(600);
 const hasBtn = await app(() => !![...document.querySelectorAll('.sk-toolbar .btn')].find((b) => /Face edges/.test(b.textContent)));

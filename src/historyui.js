@@ -9,7 +9,7 @@ import { fmt, toast, el, idbGet, idbSet } from './util.js';
 
 const $ = (s) => document.querySelector(s);
 const THUMBS_KEPT = 80; // automatic commits older than this lose their thumbnail (named, tagged and branch tips keep theirs)
-const UNDO_KEY = 'localcad-undo-v1';
+const UNDO_KEY = 'draftotter-undo-v1';
 const UNDO_KEPT = 80;
 const when = (t) => {
 	const d = new Date(t), now = new Date();

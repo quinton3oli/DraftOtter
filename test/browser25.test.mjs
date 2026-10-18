@@ -14,14 +14,14 @@ await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath:
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 const shot = (n) => page.screenshot({ path: `test/shots/${n}.png` });
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
-const reset = (src) => app((src) => { localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); (0, eval)(src)(a); a.frame(); }, src.toString());
+const reset = (src) => app((src) => { localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); (0, eval)(src)(a); a.frame(); }, src.toString());
 const modalBtn = (label) => app((label) => [...document.querySelectorAll('.modal .btn')].find((b) => b.textContent.trim() === label).click(), label);
 const waitFile = async (re) => { for (let i = 0; i < 50; i++) { const f = readdirSync(dl).find((n) => re.test(n) && !n.endsWith('.crdownload')); if (f) return f; await wait(100); } return null; };
 
@@ -31,31 +31,31 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="40mm" 
 <circle cx="50" cy="20" r="4"/>
 <rect x="24" y="8" width="12" height="24" rx="3"/></svg>`;
 await reset(() => {});
-await app((svg) => window.LocalCAD.importVectorText('plate.svg', svg), svg);
+await app((svg) => window.DraftOtter.importVectorText('plate.svg', svg), svg);
 await wait(100);
 const info = await app(() => document.querySelector('.modal .muted').textContent);
 check('import dialog shows the drawing size', /60 × 40 mm/.test(info), info);
 await app(() => { document.querySelector('#vi-h').value = '4'; });
 await modalBtn('Import');
 await wait(500);
-const n = await app(() => { const a = window.LocalCAD; const n = a.model.nodes[0]; const b = a.worldBox(n); return { type: n.type, name: n.name, vol: +a.engine.stats([n]).volume.toFixed(1), size: b.getSize(b.min.clone()).toArray().map((v) => +v.toFixed(2)) }; });
+const n = await app(() => { const a = window.DraftOtter; const n = a.model.nodes[0]; const b = a.worldBox(n); return { type: n.type, name: n.name, vol: +a.engine.stats([n]).volume.toFixed(1), size: b.getSize(b.min.clone()).toArray().map((v) => +v.toFixed(2)) }; });
 const want = (2400 - 2 * Math.PI * 16 - (12 * 24 - (4 - Math.PI) * 9)) * 4;
 check('SVG becomes an extruded sketch with 3 holes (volume)', n.type === 'sketch' && n.name === 'plate' && Math.abs(n.vol - want) / want < 0.01 && n.size[0] === 60 && n.size[2] === 4, JSON.stringify(n) + ' expect ' + want.toFixed(1));
-await app(() => { window.LocalCAD.setSelection([]); window.LocalCAD.frame(); });
+await app(() => { window.DraftOtter.setSelection([]); window.DraftOtter.frame(); });
 await wait(300);
 await shot('180-svg-import');
 
 // ---------------------------------------------------------------- export the sketch as DXF and re-import it
-await app(() => { const a = window.LocalCAD; a.exportSketchVector(a.model.nodes[0], 'dxf'); });
+await app(() => { const a = window.DraftOtter; a.exportSketchVector(a.model.nodes[0], 'dxf'); });
 const fd = await waitFile(/\.dxf$/);
 check('sketch DXF downloaded', fd === 'plate.dxf', String(fd));
 if (fd) {
 	const dxf = readFileSync(resolve(dl, fd), 'utf8');
 	check('DXF has circles and polylines in mm', /\nCIRCLE\n/.test(dxf) && /\$INSUNITS\n70\n4/.test(dxf));
-	await app((dxf) => window.LocalCAD.importVectorText('again.dxf', dxf), dxf);
+	await app((dxf) => window.DraftOtter.importVectorText('again.dxf', dxf), dxf);
 	await modalBtn('Import');
 	await wait(400);
-	const v2 = await app(() => { const a = window.LocalCAD; const n = a.model.nodes[1]; n.params.height = 4; a.commit(); return +a.engine.stats([n]).volume.toFixed(1); });
+	const v2 = await app(() => { const a = window.DraftOtter; const n = a.model.nodes[1]; n.params.height = 4; a.commit(); return +a.engine.stats([n]).volume.toFixed(1); });
 	check('DXF round trip gives the same part', Math.abs(v2 - n.vol) / n.vol < 0.01, `${v2} vs ${n.vol}`);
 }
 
@@ -63,7 +63,7 @@ if (fd) {
 await reset((a) => { a.addShape('box'); a.addShape('cylinder'); const [b, c] = a.model.nodes; b.params.w = 50; b.params.d = 30; b.params.h = 10; b.pos = [0, 0, 5]; c.params.r = 5; c.params.h = 20; c.pos = [0, 0, 5]; c.hole = true; a.commit(); a.setSelection([b.id, c.id]); a.group(); a.setSelection([]); });
 await wait(300);
 for (const f of readdirSync(dl)) rmSync(resolve(dl, f));
-await app(() => window.LocalCAD.sectionExportDialog());
+await app(() => window.DraftOtter.sectionExportDialog());
 await wait(150);
 const sec = await app(() => document.querySelector('.modal .form p:last-child').textContent);
 check('section dialog finds 2 outlines (plate + hole)', /2 outlines/.test(sec), sec);

@@ -8,18 +8,18 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 const cv = await (await page.$('#viewport canvas')).boundingBox();
-const screen = (x, y, z) => app(([x, y, z]) => { const vp = window.LocalCAD.vp; vp.render(); return vp.project(vp.camera.position.clone().set(x, y, z)); }, [x, y, z]);
-const reset = (params) => app((params) => { localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); a.addShape('box'); Object.assign(a.model.nodes[0].params, params); a.commit(); a.setSelection([]); a.frame(); }, params);
+const screen = (x, y, z) => app(([x, y, z]) => { const vp = window.DraftOtter.vp; vp.render(); return vp.project(vp.camera.position.clone().set(x, y, z)); }, [x, y, z]);
+const reset = (params) => app((params) => { localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); a.addShape('box'); Object.assign(a.model.nodes[0].params, params); a.commit(); a.setSelection([]); a.frame(); }, params);
 // the solid's volume and size, and the same for a reference box built directly
-const solid = () => app(() => { const a = window.LocalCAD, g = a.model.nodes[0], b = a.worldBox(g); return { kids: g.children ? g.children.map((c) => c.type).join(',') : g.type, vol: a.engine.stats([g]).volume, h: b.max.z - b.min.z, w: b.max.x - b.min.x, err: a.engine.errors.has(g.id) }; });
-const reference = (params) => app((params) => { const a = window.LocalCAD, e = a.engine, n = { id: 'ref' + Math.random(), type: 'box', params: { ...a.model.nodes[0].children[0].params, ...params }, pos: [0, 0, 0], rot: [0, 0, 0], scale: [1, 1, 1] }; const g = e.geometry(n); return e.stats([n]).volume; }, params);
+const solid = () => app(() => { const a = window.DraftOtter, g = a.model.nodes[0], b = a.worldBox(g); return { kids: g.children ? g.children.map((c) => c.type).join(',') : g.type, vol: a.engine.stats([g]).volume, h: b.max.z - b.min.z, w: b.max.x - b.min.x, err: a.engine.errors.has(g.id) }; });
+const reference = (params) => app((params) => { const a = window.DraftOtter, e = a.engine, n = { id: 'ref' + Math.random(), type: 'box', params: { ...a.model.nodes[0].children[0].params, ...params }, pos: [0, 0, 0], rot: [0, 0, 0], scale: [1, 1, 1] }; const g = e.geometry(n); return e.stats([n]).volume; }, params);
 const pushTop = async (z, dist) => {
 	await page.keyboard.press('u');
 	const p = await screen(4, 3, z);
@@ -30,7 +30,7 @@ const pushTop = async (z, dist) => {
 	await page.keyboard.type(String(dist));
 	await page.keyboard.press('Enter');
 	await wait(600);
-	await app(() => window.LocalCAD.setTool(null));
+	await app(() => window.DraftOtter.setTool(null));
 };
 
 // a 40 × 30 × 20 box with 3 mm rounded edges
@@ -45,7 +45,7 @@ check('pulling the top of a rounded box carries the rounded edges up with it', s
 check('…the result is the same solid as a rounded box 10 mm taller', Math.abs(s.vol - ref) < 0.05, `${s.vol.toFixed(3)} vs ${ref.toFixed(3)} (was ${v0.toFixed(3)})`);
 
 // change the distance afterwards: push in by 5 instead
-await app(() => { const a = window.LocalCAD, f = a.model.nodes[0].children[1]; f.params.depth = -5; a.commit(); });
+await app(() => { const a = window.DraftOtter, f = a.model.nodes[0].children[1]; f.params.depth = -5; a.commit(); });
 await wait(400);
 s = await solid();
 ref = await reference({ h: 15 });
@@ -53,7 +53,7 @@ check('changing the distance to −5 pushes the rounded top down', Math.abs(s.h 
 check('…and it stays one push/pull feature', s.kids === 'box,facemove', s.kids);
 
 // pushing in further than the straight walls allow is refused, not mangled
-await app(() => { const a = window.LocalCAD, f = a.model.nodes[0].children[1]; f.params.depth = -30; a.commit(); });
+await app(() => { const a = window.DraftOtter, f = a.model.nodes[0].children[1]; f.params.depth = -30; a.commit(); });
 await wait(400);
 s = await solid();
 check('pushing in deeper than the part flags an error and keeps the part whole', s.err && Math.abs(s.h - 20) < 1e-3, JSON.stringify(s));
@@ -85,19 +85,19 @@ check('a rounded side face moves out with its rounding (same as a box 8 mm wider
 // built 6 mm taller and filleted the same way
 const setBar = (kind, size) => app(([kind, size]) => { const b = document.querySelector('#fillet-bar'); const s = b.querySelector('select'); s.value = kind; s.dispatchEvent(new Event('change')); const i = b.querySelector('input.num'); i.value = size; i.dispatchEvent(new Event('change')); }, [kind, size]);
 const filletAll = async () => {
-	await app(() => window.LocalCAD.setTool('fillet'));
-	await app(() => { const a = window.LocalCAD, ft = a.vp.filletTool; ft.target = a.model.nodes[0].id; ft.selected.clear(); ft.selectAll(); });
+	await app(() => window.DraftOtter.setTool('fillet'));
+	await app(() => { const a = window.DraftOtter, ft = a.vp.filletTool; ft.target = a.model.nodes[0].id; ft.selected.clear(); ft.selectAll(); });
 	await setBar('fillet', '2');
 	await app(() => [...document.querySelectorAll('#fillet-bar .btn')].find((b) => b.textContent === 'Apply').click());
 	await wait(800);
-	await app(() => { const a = window.LocalCAD; a.setTool(null); a.setSelection([]); a.frame(); });
+	await app(() => { const a = window.DraftOtter; a.setTool(null); a.setSelection([]); a.frame(); });
 	await wait(300);
 };
 await reset({ w: 40, d: 30, h: 26, radius: 0 });
 await wait(300);
 await filletAll();
 const tall = await solid();
-const tallTrouble = await app(() => { const a = window.LocalCAD, it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return [it.level, it.highlight ? it.highlight.boxes.map((b) => [b.min.toArray().map((v) => +v.toFixed(2)), b.max.toArray().map((v) => +v.toFixed(2))]) : []]; });
+const tallTrouble = await app(() => { const a = window.DraftOtter, it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return [it.level, it.highlight ? it.highlight.boxes.map((b) => [b.min.toArray().map((v) => +v.toFixed(2)), b.max.toArray().map((v) => +v.toFixed(2))]) : []]; });
 await reset({ w: 40, d: 30, h: 20, radius: 0 });
 await wait(300);
 await filletAll();
@@ -105,7 +105,7 @@ await pushTop(20, 6);
 s = await solid();
 check('a face rounded with the Fillet tool moves with its fillets', s.kids === 'box,edgeop,facemove' && Math.abs(s.h - 26) < 1e-3 && !s.err, JSON.stringify(s));
 check('…the same solid as a taller box filleted the same way', Math.abs(s.vol - tall.vol) < 0.05, `${s.vol.toFixed(3)} vs ${tall.vol.toFixed(3)}`);
-const trouble = await app(() => { const a = window.LocalCAD, it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return [it.level, it.highlight ? it.highlight.boxes.map((b) => [b.min.toArray().map((v) => +v.toFixed(2)), b.max.toArray().map((v) => +v.toFixed(2))]) : []]; });
+const trouble = await app(() => { const a = window.DraftOtter, it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return [it.level, it.highlight ? it.highlight.boxes.map((b) => [b.min.toArray().map((v) => +v.toFixed(2)), b.max.toArray().map((v) => +v.toFixed(2))]) : []]; });
 // (the Fillet tool's own corner blends can hold sub-0.03 mm detail; the push/pull must not add any)
 check('…and adds no spots a slicer would read as broken', trouble[1].length <= tallTrouble[1].length, `${trouble[1].length} vs ${tallTrouble[1].length} on the same box built taller`);
 
@@ -114,7 +114,7 @@ check('…and adds no spots a slicer would read as broken', trouble[1].length <=
 // stretches the corners
 const cornerCube = () => app(() => {
 	localStorage.clear();
-	const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit();
+	const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit();
 	a.addShape('box'); const b = a.model.nodes[0]; Object.assign(b.params, { w: 50, d: 50, h: 50, radius: 0 }); b.pos = [0, 0, 25]; a.commit();
 	const { g } = a.featureGroupFor(b);
 	const ch = (p, q, n1, n2) => ({ pts: [p, q], n1: [n1, n1], n2: [n2, n2], closed: false, convex: true });
@@ -122,7 +122,7 @@ const cornerCube = () => app(() => {
 		params: { kind: 'fillet', size: 14, size2: 0, segs: 12, chains: [ch([25, 25, -25], [25, 25, 25], [1, 0, 0], [0, 1, 0]), ch([-25, 25, 25], [-25, 25, -25], [-1, 0, 0], [0, 1, 0]), ch([-25, -25, -25], [-25, -25, 25], [-1, 0, 0], [0, -1, 0]), ch([25, -25, 25], [25, -25, -25], [1, 0, 0], [0, -1, 0])] } });
 	a.commit(); a.setSelection([]); a.frame();
 });
-const report = () => app(() => { const a = window.LocalCAD, g = a.model.nodes[0], b = a.worldBox(g), it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return { kids: g.children ? g.children.map((c) => c.type).join(',') : g.type, vol: a.engine.stats([g]).volume, top: b.max.z, slicer: it.level, err: a.engine.errors.has(g.id) }; });
+const report = () => app(() => { const a = window.DraftOtter, g = a.model.nodes[0], b = a.worldBox(g), it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return { kids: g.children ? g.children.map((c) => c.type).join(',') : g.type, vol: a.engine.stats([g]).volume, top: b.max.z, slicer: it.level, err: a.engine.errors.has(g.id) }; });
 await cornerCube();
 await wait(500);
 const c0 = await report();
@@ -150,10 +150,10 @@ await page.keyboard.press('u');
 	await page.keyboard.type('15');
 	await page.keyboard.press('Enter');
 	await wait(800);
-	await app(() => window.LocalCAD.setTool(null));
+	await app(() => window.DraftOtter.setTool(null));
 }
 const wall = await app(() => {
-	const a = window.LocalCAD, g = a.model.nodes[0], b = a.worldBox(g), geo = a.engine.printable([g], true), P = (geo.index ? geo.toNonIndexed() : geo).attributes.position.array;
+	const a = window.DraftOtter, g = a.model.nodes[0], b = a.worldBox(g), geo = a.engine.printable([g], true), P = (geo.index ? geo.toNonIndexed() : geo).attributes.position.array;
 	let top = 0;
 	const keyOf = (i) => P[i] + ',' + P[i + 1] + ',' + P[i + 2], ids = new Map(), edges = new Map();
 	for (let i = 0; i < P.length; i += 9) {
@@ -172,7 +172,7 @@ check('…and a clean mesh (every edge shared by exactly two faces)', wall.bad =
 
 // …and keep pushing and pulling from there: the second pull used to do nothing (the part's points no longer matched)
 const pp = async (x, y, z, dist) => {
-	await app(() => { const a = window.LocalCAD; a.setTool(null); a.setSelection([]); a.frame(); });
+	await app(() => { const a = window.DraftOtter; a.setTool(null); a.setSelection([]); a.frame(); });
 	await wait(400);
 	await page.keyboard.press('u');
 	const q = await screen(x, y, z);
@@ -183,8 +183,8 @@ const pp = async (x, y, z, dist) => {
 	await page.keyboard.type(String(dist));
 	await page.keyboard.press('Enter');
 	await wait(800);
-	await app(() => window.LocalCAD.setTool(null));
-	return app(() => { const a = window.LocalCAD, g = a.model.nodes[0], b = a.worldBox(g); return { n: g.children.length, vol: a.engine.stats([g]).volume, w: b.max.x - b.min.x, h: b.max.z - b.min.z, err: a.engine.errors.has(g.id) }; });
+	await app(() => window.DraftOtter.setTool(null));
+	return app(() => { const a = window.DraftOtter, g = a.model.nodes[0], b = a.worldBox(g); return { n: g.children.length, vol: a.engine.stats([g]).volume, w: b.max.x - b.min.x, h: b.max.z - b.min.z, err: a.engine.errors.has(g.id) }; });
 };
 const s1 = await pp(-31.5, -31.5, 25, 5);
 check('a second pull on the thickened wall works (now 90 mm across)', s1.n === 4 && Math.abs(s1.w - 90) < 1e-3 && s1.vol > wall.vol + 1000 && !s1.err, JSON.stringify(s1));
@@ -194,7 +194,7 @@ const s3 = await pp(0, 0, 50, -10);
 check('…and the top can still be pushed in afterwards (4/5 of the volume)', Math.abs(s3.h - 40) < 1e-3 && Math.abs(s3.vol - wall.vol * 0.8) < 0.05 && !s3.err, JSON.stringify(s3));
 
 // a cylinder's top meets its curved wall the same way
-await app(() => { localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); a.addShape('cylinder'); Object.assign(a.model.nodes[0].params, { r: 12, h: 30, seg: 64 }); a.model.nodes[0].pos = [0, 0, 15]; a.commit(); a.setSelection([]); a.frame(); });
+await app(() => { localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); a.addShape('cylinder'); Object.assign(a.model.nodes[0].params, { r: 12, h: 30, seg: 64 }); a.model.nodes[0].pos = [0, 0, 15]; a.commit(); a.setSelection([]); a.frame(); });
 await wait(500);
 const y0 = await report();
 await pushTop(30, -12);

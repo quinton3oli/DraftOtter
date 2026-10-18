@@ -1,4 +1,4 @@
-// Claude connection: the page side of the LocalCAD MCP helper (claude/localcad-mcp.mjs). When the user allows it,
+// Claude connection: the page side of the DraftOtter MCP helper (claude/draftotter-mcp.mjs). When the user allows it,
 // the page connects to the helper on 127.0.0.1 and runs the tools Claude calls (add shapes, sketch, combine,
 // screenshot, export, …) on the open design. Every change is a normal commit, so each one can be undone.
 import * as THREE from 'three';
@@ -10,7 +10,7 @@ import { stepFromPositions } from './step.js';
 import { build3MF } from './threemf.js';
 import { round, fmt, evalExpr, toast, el } from './util.js';
 
-const PREFS_KEY = 'localcad-claude';
+const PREFS_KEY = 'draftotter-claude';
 const DEFAULT_PORT = 47821;
 const $ = (s) => document.querySelector(s);
 
@@ -23,7 +23,7 @@ function savePrefs(p) {
 
 const STATES = {
 	off: ['', ''],
-	waiting: ['Claude: waiting for the helper', 'Allowed, but the DraftOtter helper isn\'t running. Start Claude Desktop (with the DraftOtter extension) or Claude Code (with the localcad MCP server).'],
+	waiting: ['Claude: waiting for the helper', 'Allowed, but the DraftOtter helper isn\'t running. Start Claude Desktop (with the DraftOtter extension) or Claude Code (with the draftotter MCP server).'],
 	connected: ['Claude connected', 'Claude can work on this design. Click for settings.'],
 	working: ['Claude is working…', 'Claude is changing the design. Each change can be undone (Ctrl+Z).'],
 	busy: ['Claude: another window is connected', 'Claude is connected to DraftOtter in another tab or window. Close that one (or turn Claude off there) to use this one.'],
@@ -88,7 +88,7 @@ export const ClaudeLinkMixin = {
 		c.ws = ws;
 		ws.onopen = () => {
 			c.delay = 2000;
-			ws.send(JSON.stringify({ type: 'hello', app: 'LocalCAD', design: this.model.doc.name || 'Untitled' }));
+			ws.send(JSON.stringify({ type: 'hello', app: 'DraftOtter', design: this.model.doc.name || 'Untitled' }));
 			this.claudeSetState('connected');
 		};
 		ws.onmessage = (e) => {
@@ -127,14 +127,14 @@ export const ClaudeLinkMixin = {
 	claudeDialog() {
 		const c = this.claude, p = c.prefs;
 		// where the helper sits next to this file, for the Claude Code command
-		let helper = 'C:\\path\\to\\DraftOtter\\claude\\localcad-mcp.mjs';
+		let helper = 'C:\\path\\to\\DraftOtter\\claude\\draftotter-mcp.mjs';
 		if (location.protocol === 'file:') {
 			const dir = decodeURIComponent(location.pathname).replace(/\/[^/]*$/, '');
-			helper = /^\/[A-Za-z]:/.test(dir) ? (dir.slice(1) + '/claude/localcad-mcp.mjs').replace(/\//g, '\\') : dir + '/claude/localcad-mcp.mjs';
+			helper = /^\/[A-Za-z]:/.test(dir) ? (dir.slice(1) + '/claude/draftotter-mcp.mjs').replace(/\//g, '\\') : dir + '/claude/draftotter-mcp.mjs';
 		}
 		const web = location.protocol !== 'file:';
-		if (web) helper = 'C:/path/to/localcad-mcp.mjs';
-		const cmd = `claude mcp add localcad -- node "${helper}"`;
+		if (web) helper = 'C:/path/to/draftotter-mcp.mjs';
+		const cmd = `claude mcp add draftotter -- node "${helper}"`;
 		const port = el('input', { id: 'claude-port', type: 'text', value: p.port || DEFAULT_PORT, style: 'width:80px' });
 		const allow = el('input', { id: 'claude-on', type: 'checkbox', checked: !!p.on });
 		const copyBtn = el('button', { class: 'btn sm', type: 'button', onclick: () => { if (navigator.clipboard) navigator.clipboard.writeText(cmd).then(() => toast('Copied', 'ok', 1200), () => toast('Select the command and copy it', 'warn')); } }, 'Copy');
@@ -147,13 +147,13 @@ export const ClaudeLinkMixin = {
 				? el('p', { class: 'small' }, el('b', {}, 'Claude Desktop: '), 'download ', el('a', { href: 'claude/DraftOtter.mcpb', download: 'DraftOtter.mcpb' }, 'DraftOtter.mcpb'), ' and open it to install the DraftOtter extension (or drag it onto Claude Desktop’s Settings → Extensions).')
 				: el('p', { class: 'small' }, el('b', {}, 'Claude Desktop: '), 'open ', el('code', {}, 'DraftOtter.mcpb'), ' (in the ', el('code', {}, 'claude'), ' folder next to DraftOtter.html) to install the DraftOtter extension, or drag it onto Claude Desktop’s Settings → Extensions.'),
 			web
-				? el('p', { class: 'small' }, el('b', {}, 'Claude Code: '), 'download ', el('a', { href: 'claude/localcad-mcp.mjs', download: 'localcad-mcp.mjs' }, 'localcad-mcp.mjs'), ', then run this once with its path (needs Node.js):')
+				? el('p', { class: 'small' }, el('b', {}, 'Claude Code: '), 'download ', el('a', { href: 'claude/draftotter-mcp.mjs', download: 'draftotter-mcp.mjs' }, 'draftotter-mcp.mjs'), ', then run this once with its path (needs Node.js):')
 				: el('p', { class: 'small' }, el('b', {}, 'Claude Code: '), 'run this once (needs Node.js):'),
 			el('div', { class: 'claude-cmd' }, el('code', {}, cmd), copyBtn),
 			el('p', { class: 'muted small' }, 'Then ask Claude things like “add a 60 × 40 × 3 mm plate with M3 countersunk holes 5 mm from each corner”. Keep this page open while Claude works. Only this computer can connect (127.0.0.1), and only while this box is ticked.'),
 			el('details', {}, el('summary', { class: 'small' }, 'Advanced'),
 				el('label', { class: 'row' }, el('span', {}, 'Helper port'), port),
-				el('p', { class: 'muted small' }, `Change it only if ${DEFAULT_PORT} is taken; set the same port in the extension settings (or LOCALCAD_PORT for Claude Code).`)),
+				el('p', { class: 'muted small' }, `Change it only if ${DEFAULT_PORT} is taken; set the same port in the extension settings (or DRAFTOTTER_PORT for Claude Code).`)),
 		);
 		const apply = () => {
 			const v = Math.round(+port.value);

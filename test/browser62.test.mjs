@@ -7,12 +7,12 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
-const centers = () => page.evaluate(() => { const a = window.LocalCAD; return a.model.nodes.filter((n) => n.type === 'box').map((n) => { const c = a.worldBox(n).getCenter(new (a.worldBox(n).min.constructor)()); return { c: c.toArray().map((v) => +v.toFixed(3)), rz: +n.rot[2].toFixed(3) }; }); });
+const centers = () => page.evaluate(() => { const a = window.DraftOtter; return a.model.nodes.filter((n) => n.type === 'box').map((n) => { const c = a.worldBox(n).getCenter(new (a.worldBox(n).min.constructor)()); return { c: c.toArray().map((v) => +v.toFixed(3)), rz: +n.rot[2].toFixed(3) }; }); });
 const create = async (opts) => {
 	await page.evaluate((o) => {
 		document.querySelector('#ar-n').value = String(o.n);
@@ -27,7 +27,7 @@ const create = async (opts) => {
 // a 10 mm cube at the origin; a drawn L-shaped path: 50 mm along X, then 50 mm along Y (100 mm long)
 await page.evaluate(() => {
 	localStorage.clear();
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.addShape('box');
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.addShape('box');
 	const b = a.model.nodes[0]; Object.assign(b.params, { w: 10, d: 10, h: 10 }); b.pos = [0, 0, 5]; a.commit();
 	a.patternPath = { v: 2, points: [[0, 0], [50, 0], [50, 50]], segs: [{ a: 0, b: 1 }, { a: 1, b: 2 }], circles: [], cons: [], radii: {}, anchored: true };
 	a.setSelection([b.id]);
@@ -44,7 +44,7 @@ check('…turning to follow it (the ones after the corner are turned 90°)', cs.
 
 // a sketch with a 30 mm circle as the path, 6 items, not starting at the object: the cube moves onto the circle
 await page.evaluate(() => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.addShape('box');
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.addShape('box');
 	const b = a.model.nodes[0]; Object.assign(b.params, { w: 10, d: 10, h: 10 }); b.pos = [100, 100, 5];
 	const sk = { id: 'sk1', seq: 50, type: 'sketch', name: 'Ring path', params: { v: 2, points: [[0, 0]], segs: [], circles: [{ c: 0, r: 30 }], cons: [], radii: {}, height: 2, mode: 'extrude', anchored: true }, pos: [0, 0, 0], rot: [0, 0, 0], scale: [1, 1, 1], color: '#888888', visible: true, locked: false, hole: false };
 	a.model.nodes.push(sk); a.commit();
@@ -62,7 +62,7 @@ check('6 items go evenly round the circle, the original moved onto it', cs.lengt
 check('…not turned when "follow" is off', cs.every((x) => Math.abs(x.rz) < 1e-6), JSON.stringify(cs.map((x) => x.rz)));
 
 // Draw a path… opens the sketch editor in path mode
-await page.evaluate(() => { const a = window.LocalCAD; a.setSelection([a.model.nodes[0].id]); a.arrayDialog('path'); });
+await page.evaluate(() => { const a = window.DraftOtter; a.setSelection([a.model.nodes[0].id]); a.arrayDialog('path'); });
 await wait(200);
 await page.evaluate(() => document.querySelector('#ar-draw').click());
 await wait(400);

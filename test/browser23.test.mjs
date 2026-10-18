@@ -8,7 +8,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -19,12 +19,12 @@ const near = (a, b) => Math.abs(a - b) < 1e-3;
 
 // four parts of different widths, unevenly placed along X (slightly off in Y too)
 const setup = () => app(() => {
-	localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.commit();
+	localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.commit();
 	const specs = [[10, -40], [20, -13], [6, 8], [14, 45]];
 	for (const [w, x] of specs) { a.addShape('box'); const n = a.model.nodes[a.model.nodes.length - 1]; n.params.w = w; n.params.d = 10; n.params.h = 10; n.pos = [x, (x % 7), 5]; }
 	a.commit(); a.setSelection(a.model.nodes.map((n) => n.id)); a.frame();
 });
-const spans = () => app(() => window.LocalCAD.model.nodes.map((n) => { const b = window.LocalCAD.worldBox(n); return [b.min.x, b.max.x, b.min.y]; }).sort((p, q) => p[0] - q[0]));
+const spans = () => app(() => window.DraftOtter.model.nodes.map((n) => { const b = window.DraftOtter.worldBox(n); return [b.min.x, b.max.x, b.min.y]; }).sort((p, q) => p[0] - q[0]));
 const gaps = (s) => s.slice(1).map((b, i) => b[0] - s[i][1]);
 const centers = (s) => s.map((b) => (b[0] + b[1]) / 2);
 const openDialog = async () => { await page.keyboard.down('Shift'); await page.keyboard.press('l'); await page.keyboard.up('Shift'); await wait(200); };
@@ -44,7 +44,7 @@ await wait(300);
 let s = await spans(), g = gaps(s);
 check('fit: all gaps equal', g.every((x) => near(x, g[0])), JSON.stringify(g));
 check('fit: outer objects stay put, Y untouched', near(s[0][0], s0[0][0]) && near(s[3][1], s0[3][1]) && s.every((b, i) => near(b[2], s0[i][2])), JSON.stringify({ s0, s }));
-await app(() => { const a = window.LocalCAD; a.setSelection([]); a.frame(); });
+await app(() => { const a = window.DraftOtter; a.setSelection([]); a.frame(); });
 await wait(300);
 await shot('161-space-result');
 
@@ -76,7 +76,7 @@ check('exact gap (expression 2.5*2 = 5 mm), first object stays', g.every((x) => 
 
 // ---------------------------------------------------------------- exact pitch with only two objects, along Y
 await app(() => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.commit();
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.commit();
 	a.addShape('cylinder'); a.addShape('cylinder'); const [p, q] = a.model.nodes; p.pos = [0, -20, 10]; q.pos = [3, 17, 10]; a.commit(); a.setSelection([p.id, q.id]);
 });
 await wait(200);
@@ -87,11 +87,11 @@ await pick('sp-by', 'center');
 await app(() => { const i = document.querySelector('#sp-val'); i.value = '30'; });
 await apply();
 await wait(300);
-const ys = await app(() => window.LocalCAD.model.nodes.map((n) => n.pos[1]).sort((a, b) => a - b));
+const ys = await app(() => window.DraftOtter.model.nodes.map((n) => n.pos[1]).sort((a, b) => a - b));
 check('two objects placed 30 mm center-to-center along Y', near(ys[1] - ys[0], 30) && near(ys[0], -20), JSON.stringify(ys));
 
 // ---------------------------------------------------------------- undo restores, entry points exist
-const undone = await app(() => { const a = window.LocalCAD; a.undo(); return a.model.nodes.map((n) => n.pos[1]).sort((x, y) => x - y); });
+const undone = await app(() => { const a = window.DraftOtter; a.undo(); return a.model.nodes.map((n) => n.pos[1]).sort((x, y) => x - y); });
 check('undo restores the previous spacing', near(undone[1], 17), JSON.stringify(undone));
 const entries = await app(() => ({ tb: !![...document.querySelectorAll('#toolbar .tb')].find((b) => /Space evenly/.test(b.title)), props: !![...document.querySelectorAll('#props button')].find((b) => b.textContent === 'Space evenly…') }));
 check('toolbar button and Properties button exist', entries.tb && entries.props, JSON.stringify(entries));

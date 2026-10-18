@@ -89,8 +89,8 @@ export class Viewport {
 		renderer.localClippingEnabled = true;
 		renderer.autoClear = false;
 		// checking every shader for errors makes the GPU compile them one at a time while the page waits; three.js
-		// still reports a shader that fails to link. Turn it back on with localStorage['localcad-debug-shaders'] = 1.
-		try { renderer.debug.checkShaderErrors = !!localStorage.getItem('localcad-debug-shaders'); } catch (e) { renderer.debug.checkShaderErrors = false; }
+		// still reports a shader that fails to link. Turn it back on with localStorage['draftotter-debug-shaders'] = 1.
+		try { renderer.debug.checkShaderErrors = !!localStorage.getItem('draftotter-debug-shaders'); } catch (e) { renderer.debug.checkShaderErrors = false; }
 		// the first frames wait for precompile(), so drawing doesn't compile shaders one at a time on the main thread
 		this.holdFrames = true;
 		setTimeout(() => { this.holdFrames = false; this.invalidate(); }, 8000); // whatever happens

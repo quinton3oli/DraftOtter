@@ -7,7 +7,7 @@
 // listens on 127.0.0.1 and only accepts pages opened from a file (or served by this helper). No dependencies:
 // the MCP protocol (JSON-RPC over stdio) and the WebSocket server are implemented here.
 //
-//   node localcad-mcp.mjs            env: LOCALCAD_PORT (47821), LOCALCAD_EXPORT_DIR (~/Downloads)
+//   node draftotter-mcp.mjs            env: DRAFTOTTER_PORT (47821), DRAFTOTTER_EXPORT_DIR (~/Downloads)
 import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -16,11 +16,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const VERSION = '1.1.0';
-const PORT = +process.env.LOCALCAD_PORT || 47821;
-const EXPORT_DIR = expandHome(process.env.LOCALCAD_EXPORT_DIR || path.join(os.homedir(), 'Downloads'));
+const PORT = +process.env.DRAFTOTTER_PORT || 47821;
+const EXPORT_DIR = expandHome(process.env.DRAFTOTTER_EXPORT_DIR || path.join(os.homedir(), 'Downloads'));
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CALL_TIMEOUT = 180000;
-const log = (...a) => process.stderr.write('[localcad-mcp] ' + a.join(' ') + '\n');
+const log = (...a) => process.stderr.write('[draftotter-mcp] ' + a.join(' ') + '\n');
 
 function expandHome(p) {
 	// unfilled ${...} placeholders (e.g. an optional setting left empty) fall back to the default
@@ -325,7 +325,7 @@ async function handleRpc(msg) {
 			return reply({
 				protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
 				capabilities: { tools: { listChanged: false } },
-				serverInfo: { name: 'localcad', title: 'DraftOtter', version: VERSION },
+				serverInfo: { name: 'draftotter', title: 'DraftOtter', version: VERSION },
 				instructions: INSTRUCTIONS,
 			});
 		}
@@ -368,8 +368,8 @@ process.stdin.on('end', () => process.exit(0));
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 let listening = false, bindError = null;
 
-// The hosted web app, plus any listed in LOCALCAD_ORIGINS (comma-separated, e.g. a self-hosted copy).
-const WEB_ORIGINS = ['https://localcad-8158c.web.app', 'https://localcad-8158c.firebaseapp.com', ...(process.env.LOCALCAD_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)];
+// The hosted web app, plus any listed in DRAFTOTTER_ORIGINS (comma-separated, e.g. a self-hosted copy).
+const WEB_ORIGINS = ['https://localcad-8158c.web.app', 'https://localcad-8158c.firebaseapp.com', ...(process.env.DRAFTOTTER_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)];
 
 /** Pages allowed to connect: DraftOtter opened as a file (origin "null"), served by this helper, or the web app. */
 function originOk(origin) {
@@ -378,7 +378,7 @@ function originOk(origin) {
 }
 
 function findApp() {
-	for (const p of [path.join(HERE, 'DraftOtter.html'), path.join(HERE, '..', 'DraftOtter.html'), path.join(HERE, 'LocalCAD.html'), path.join(HERE, '..', 'LocalCAD.html')]) if (fs.existsSync(p)) return p;
+	for (const p of [path.join(HERE, 'DraftOtter.html'), path.join(HERE, '..', 'DraftOtter.html')]) if (fs.existsSync(p)) return p;
 	return null;
 }
 
@@ -386,7 +386,7 @@ const server = http.createServer((req, res) => {
 	if (!originOk(req.headers.origin)) { res.writeHead(403).end(); return; }
 	if (req.url === '/status') {
 		res.writeHead(200, { 'content-type': 'application/json' });
-		res.end(JSON.stringify({ app: 'localcad-mcp', version: VERSION, connected: !!page }));
+		res.end(JSON.stringify({ app: 'draftotter-mcp', version: VERSION, connected: !!page }));
 		return;
 	}
 	// DraftOtter itself, for browsers that don't let a page opened from a file talk to 127.0.0.1

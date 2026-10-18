@@ -5,12 +5,12 @@ const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Googl
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
-await app(() => { localStorage.clear(); window.LocalCAD.addShape('box'); });
-const pos = () => app(() => window.LocalCAD.model.nodes[0].pos.slice(0, 2));
+await app(() => { localStorage.clear(); window.DraftOtter.addShape('box'); });
+const pos = () => app(() => window.DraftOtter.model.nodes[0].pos.slice(0, 2));
 const dirOf = async (key) => {
 	const a = await pos();
 	await page.keyboard.press(key);
@@ -26,7 +26,7 @@ const expect = {
 };
 let fails = 0;
 for (const view of Object.keys(expect)) {
-	await app((v) => window.LocalCAD.vp.setView(v), view);
+	await app((v) => window.DraftOtter.vp.setView(v), view);
 	await wait(450);
 	await page.mouse.move(5, 300); // keep focus off inputs
 	const got = [];
@@ -36,12 +36,12 @@ for (const view of Object.keys(expect)) {
 	console.log(ok ? 'ok  ' : 'FAIL', view.padEnd(6), 'up/down/left/right ->', got.join(' '), ok ? '' : '(expected ' + expect[view].join(' ') + ')');
 }
 // Rotate the camera 30° off the right view: still snaps to an axis
-await app(() => { const vp = window.LocalCAD.vp; const t = vp.controls.target; const d = vp.camera.position.distanceTo(t); vp.camera.position.set(t.x + d * Math.cos(-0.5), t.y + d * Math.sin(-0.5), t.z + d * 0.4); vp.controls.update(); });
+await app(() => { const vp = window.DraftOtter.vp; const t = vp.controls.target; const d = vp.camera.position.distanceTo(t); vp.camera.position.set(t.x + d * Math.cos(-0.5), t.y + d * Math.sin(-0.5), t.z + d * 0.4); vp.controls.update(); });
 await wait(100);
 console.log('oblique view, Up ->', await dirOf('ArrowUp'));
-const z0 = (await app(() => window.LocalCAD.model.nodes[0].pos[2]));
+const z0 = (await app(() => window.DraftOtter.model.nodes[0].pos[2]));
 await page.keyboard.down('Control'); await page.keyboard.press('ArrowUp'); await page.keyboard.up('Control');
-console.log('Ctrl+Up still raises Z:', z0, '->', await app(() => window.LocalCAD.model.nodes[0].pos[2]));
+console.log('Ctrl+Up still raises Z:', z0, '->', await app(() => window.DraftOtter.model.nodes[0].pos[2]));
 console.log('ERRORS:', errors.join('\n') || 'none');
 await browser.close();
 process.exit(fails ? 1 : 0);

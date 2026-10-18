@@ -54,9 +54,9 @@ import { solveModel } from './constraints.js';
 import { toModel, modelToParams, profileRegions, modelFromRegions, scaleModel, sketchPaths } from './sketchModel.js';
 import { ICONS, icon } from './icons.js';
 
-const AUTOSAVE_KEY = 'localcad-autosave-v1';
+const AUTOSAVE_KEY = 'draftotter-autosave-v1';
 // identifies this build of the app (set by build.mjs): caches made by an older build are not reused
-const BUILD = typeof __LOCALCAD_BUILD__ !== 'undefined' ? __LOCALCAD_BUILD__ : 'dev';
+const BUILD = typeof __DRAFTOTTER_BUILD__ !== 'undefined' ? __DRAFTOTTER_BUILD__ : 'dev';
 // bump to redraw every library picture (e.g. after changing how they are lit)
 const THUMB_VERSION = 't1:';
 // when the user last pressed, dragged, scrolled or typed (background work waits for a quiet moment)
@@ -64,8 +64,8 @@ let lastInteraction = 0;
 if (typeof window !== 'undefined') for (const ev of ['pointerdown', 'pointerup', 'wheel', 'keydown']) window.addEventListener(ev, () => { lastInteraction = performance.now(); }, { capture: true, passive: true });
 if (typeof window !== 'undefined') window.addEventListener('pointermove', () => { lastInteraction = performance.now(); }, { capture: true, passive: true }); // hovering counts too (it picks faces and handles)
 const FACE_OVERLAP = 0.02; // how far an extrusion sketched on a face reaches back into the face (inside the part)
-const LIBRARY_KEY = 'localcad-library-v1';
-const PANELS_KEY = 'localcad-panels';
+const LIBRARY_KEY = 'draftotter-library-v1';
+const PANELS_KEY = 'draftotter-panels';
 // running as an installed app: its window title already starts with the app's name
 const installedApp = () => (window.matchMedia && window.matchMedia('(display-mode: standalone), (display-mode: window-controls-overlay), (display-mode: minimal-ui)').matches) || navigator.standalone === true;
 const $ = (s) => document.querySelector(s);
@@ -2092,7 +2092,7 @@ class App {
 		}
 		try {
 			const data = JSON.parse(await readFile(file, true));
-			if (data.format !== 'localcad') throw new Error('Not a DraftOtter design file');
+			if (data.format !== 'draftotter' && data.format !== 'localcad') throw new Error('Not a DraftOtter design file');
 			// opens in a new tab, unless this one is an empty, untouched design
 			if (this.tabs && !this.tabIsBlank() && !(await this.newTab())) return;
 			this.model.load(data.doc, data.blobs);
@@ -2762,9 +2762,9 @@ class App {
 		const caret = el('span', { class: 'sec-caret', html: icon('caret') });
 		title.prepend(caret);
 		let hidden = false;
-		try { hidden = localStorage.getItem('localcad-stats-hidden') === '1'; } catch (e) { /* ignore */ }
+		try { hidden = localStorage.getItem('draftotter-stats-hidden') === '1'; } catch (e) { /* ignore */ }
 		const apply = () => { $('#stats').style.display = hidden ? 'none' : ''; title.classList.toggle('closed', hidden); };
-		title.addEventListener('click', () => { hidden = !hidden; try { localStorage.setItem('localcad-stats-hidden', hidden ? '1' : '0'); } catch (e) { /* ignore */ } apply(); });
+		title.addEventListener('click', () => { hidden = !hidden; try { localStorage.setItem('draftotter-stats-hidden', hidden ? '1' : '0'); } catch (e) { /* ignore */ } apply(); });
 		apply();
 	}
 
@@ -2796,7 +2796,7 @@ class App {
 			}
 			grow.textContent = h != null && h < 4 ? '⇲' : '⇱';
 			grow.title = h != null && h < 4 ? 'Show the Shapes area again' : 'Expand the list into the Shapes area (drag the bar above to resize)';
-			if (save) try { localStorage.setItem('localcad-lib-height', h == null ? '' : String(Math.round(h))); } catch (e) { /* ignore */ }
+			if (save) try { localStorage.setItem('draftotter-lib-height', h == null ? '' : String(Math.round(h))); } catch (e) { /* ignore */ }
 		};
 		const cur = () => (lib.style.display === 'none' ? 0 : lib.getBoundingClientRect().height);
 		const toggle = () => { if (cur() < 4) set(this.libLastHeight || null); else { this.libLastHeight = cur(); set(0); } };
@@ -2813,7 +2813,7 @@ class App {
 		split.addEventListener('dblclick', toggle);
 		grow.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
 		let saved = null;
-		try { saved = localStorage.getItem('localcad-lib-height'); } catch (e) { /* ignore */ }
+		try { saved = localStorage.getItem('draftotter-lib-height'); } catch (e) { /* ignore */ }
 		if (saved) requestAnimationFrame(() => set(+saved, false));
 	}
 
@@ -3360,7 +3360,7 @@ class App {
 		const label = (k) => (PRESETS[k] && PRESETS[k].label) || (SHAPES[k] && SHAPES[k].label) || k;
 		const queue = [];
 		let collapsed = {};
-		try { collapsed = JSON.parse(localStorage.getItem('localcad-lib-collapsed') || '{}'); } catch (e) { /* ignore */ }
+		try { collapsed = JSON.parse(localStorage.getItem('draftotter-lib-collapsed') || '{}'); } catch (e) { /* ignore */ }
 		const add = (key, lbl, title, section) => {
 			const img = el('img', { alt: '', class: 'pending' });
 			const item = el('div', { class: 'lib-item', draggable: 'true', title: title || `Add ${lbl} (click, or drag onto the bed or a face)` }, img, el('span', {}, lbl));
@@ -3377,7 +3377,7 @@ class App {
 			head.addEventListener('click', () => {
 				s.classList.toggle('collapsed');
 				collapsed[title] = s.classList.contains('collapsed');
-				try { localStorage.setItem('localcad-lib-collapsed', JSON.stringify(collapsed)); } catch (e) { /* ignore */ }
+				try { localStorage.setItem('draftotter-lib-collapsed', JSON.stringify(collapsed)); } catch (e) { /* ignore */ }
 			});
 			return s;
 		};
@@ -3425,7 +3425,7 @@ class App {
 	 * renders the ones it doesn't have yet, a few at a time in idle moments after the app is ready.
 	 */
 	async loadThumbnails(queue) {
-		const KEY = 'localcad-lib-thumbs';
+		const KEY = 'draftotter-lib-thumbs';
 		const maker = (key) => (key === 'sketch' ? () => makeNode('sketch', { pts: [[0, 0], [20, 0], [20, 4], [4, 4], [4, 20], [0, 20]], height: 12 })
 			: PRESETS[key] ? PRESETS[key].make : () => makeNode(key));
 		// each picture is kept under a fingerprint of the shape it shows, so an update only redraws shapes that changed
@@ -4279,7 +4279,7 @@ function makeThumbnails(engine, only) {
 Object.assign(App.prototype, SplitMixin, VectorMixin, PrintCheckMixin, FitMixin, ConfigMixin, TemplateMixin, VersionMixin, AssemblyMixin, WrapMixin, TimelineMixin, DrawingMixin, FontPickerMixin, HoleWizardMixin, FeaMixin, ArrangeMixin, RoundMixin, ImageImportMixin, MeshImportMixin, ReliefMixin, ClaudeLinkMixin, ModifierMixin, HistoryMixin, PwaMixin, SculptMixin, TabsMixin, RenderMixin, PaintMixin, PrintPrepMixin, SymmetryMixin);
 
 const app = new App();
-window.LocalCAD = app;
+
 window.DraftOtter = app;
 window.QCAD = app; // alias used by some tests and scripts
 window.__lcadTest = { readZip, profileRegions }; // helpers for automated tests

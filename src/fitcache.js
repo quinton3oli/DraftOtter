@@ -2,7 +2,7 @@
 // doesn't have to grow them again. The whole store is read once at startup so lookups stay synchronous.
 import * as THREE from 'three';
 
-const DB = 'localcad-cache', STORE = 'fits', VERSION = 'v1', LIMIT = 80 * 1024 * 1024;
+const DB = 'draftotter-cache', STORE = 'fits', VERSION = 'v1', LIMIT = 80 * 1024 * 1024;
 const mem = new Map(); // hash -> { p, n, i, t, size }
 let db = null;
 
@@ -24,6 +24,7 @@ const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result)
 /** Read the stored shapes into memory (dropping the oldest beyond the size limit). Never throws. */
 export async function loadFitCache() {
 	try {
+		try { indexedDB.deleteDatabase('localcad-cache'); } catch (e) { /* the cache from before the rename; it is rebuilt as needed */ }
 		const open = indexedDB.open(DB, 1);
 		open.onupgradeneeded = () => open.result.createObjectStore(STORE);
 		db = await req(open);

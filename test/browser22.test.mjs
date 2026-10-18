@@ -8,7 +8,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -17,20 +17,20 @@ let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 const cv = await (await page.$('#viewport canvas')).boundingBox();
 const reset = async (src, view = 'iso') => {
-	await app(([src, view]) => { localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); (0, eval)(src)(a); a.setSelection([]); a.vp.setView(view); a.frame(); }, [src.toString(), view]);
+	await app(([src, view]) => { localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); (0, eval)(src)(a); a.setSelection([]); a.vp.setView(view); a.frame(); }, [src.toString(), view]);
 	await wait(900);
 	await page.keyboard.press('m');
 	await wait(100);
 };
-const scr = (x, y, z) => app(([x, y, z]) => { const vp = window.LocalCAD.vp; vp.render(); return vp.project(vp.camera.position.clone().set(x, y, z)); }, [x, y, z]);
+const scr = (x, y, z) => app(([x, y, z]) => { const vp = window.DraftOtter.vp; vp.render(); return vp.project(vp.camera.position.clone().set(x, y, z)); }, [x, y, z]);
 const click = async (x, y, z) => { const p = await scr(x, y, z); await page.mouse.move(cv.x + p.x, cv.y + p.y, { steps: 2 }); await wait(60); await page.mouse.click(cv.x + p.x, cv.y + p.y); await wait(120); };
 const hoverAt = async (x, y, z) => { const p = await scr(x, y, z); await page.mouse.move(cv.x + p.x, cv.y + p.y, { steps: 2 }); await wait(80); };
-const pinned = () => app(() => { const m = window.LocalCAD.vp.measure; return m.pin ? { kind: m.pin.kind, d: +(2 * m.pin.r).toFixed(3), r: +m.pin.r.toFixed(3), c: m.pin.center.toArray().map((v) => +v.toFixed(3)), label: m.clabel.textContent } : null; });
+const pinned = () => app(() => { const m = window.DraftOtter.vp.measure; return m.pin ? { kind: m.pin.kind, d: +(2 * m.pin.r).toFixed(3), r: +m.pin.r.toFixed(3), c: m.pin.center.toArray().map((v) => +v.toFixed(3)), label: m.clabel.textContent } : null; });
 
 // ---------------------------------------------------------------- cylinder: rim of the top face, and the curved wall
 await reset((a) => { a.addShape('cylinder'); const n = a.model.nodes[0]; n.params.r = 12.5; n.params.h = 20; n.pos = [0, 0, 10]; a.commit(); });
 await hoverAt(12.35, 0.2, 20);
-const hov = await app(() => { const m = window.LocalCAD.vp.measure; return { kind: m.hover && m.hover.kind, mode: m.hover && m.hover.mode, label: m.hlabel.style.display !== 'none' ? m.hlabel.textContent : '' }; });
+const hov = await app(() => { const m = window.DraftOtter.vp.measure; return { kind: m.hover && m.hover.kind, mode: m.hover && m.hover.mode, label: m.hlabel.style.display !== 'none' ? m.hlabel.textContent : '' }; });
 check('hovering a cylinder rim previews its diameter', hov.kind === 'circle' && hov.mode === 'edge' && hov.label.includes('Ø 25'), JSON.stringify(hov));
 await click(12.35, 0.2, 20);
 let r = await pinned();
@@ -80,11 +80,11 @@ await reset((a) => {
 // hover near the first hole's center (over the hole, so the ray hits the hole wall) - use the rim, then the center point
 await hoverAt(-17.3 + 3.2, 4.1, 6);
 await hoverAt(-17.3, 4.1, 6);
-let snap = await app(() => { const m = window.LocalCAD.vp.measure; return m.hover ? m.hover.mode : null; });
+let snap = await app(() => { const m = window.DraftOtter.vp.measure; return m.hover ? m.hover.mode : null; });
 await click(-17.3, 4.1, 6);
 await hoverAt(21.9 + 3.2, -6.4, 6);
 await click(21.9, -6.4, 6);
-const dist = await app(() => { const m = window.LocalCAD.vp.measure; return m.pts.length === 2 ? +m.pts[0].distanceTo(m.pts[1]).toFixed(3) : null; });
+const dist = await app(() => { const m = window.DraftOtter.vp.measure; return m.pts.length === 2 ? +m.pts[0].distanceTo(m.pts[1]).toFixed(3) : null; });
 const want = +Math.hypot(21.9 + 17.3, -6.4 - 4.1).toFixed(3);
 check('center of a hole snaps (center-to-center distance is exact)', dist === want, `snap=${snap} dist=${dist} want=${want}`);
 await shot('152-measure-centers');
@@ -93,15 +93,15 @@ await shot('152-measure-centers');
 await reset((a) => { a.addShape('box'); }, 'top');
 await click(-5, -5, 20);
 await click(5, 3, 20);
-const pp = await app(() => { const m = window.LocalCAD.vp.measure; return { n: m.pts.length, pin: !!m.pin }; });
+const pp = await app(() => { const m = window.DraftOtter.vp.measure; return { n: m.pts.length, pin: !!m.pin }; });
 check('flat faces keep point-to-point measuring', pp.n === 2 && !pp.pin, JSON.stringify(pp));
 await page.keyboard.press('Escape');
 await wait(100);
-const cleared = await app(() => { const m = window.LocalCAD.vp.measure; return !m.pinObj && !m.hoverObj && m.clabel.style.display === 'none' && m.hlabel.style.display === 'none'; });
+const cleared = await app(() => { const m = window.DraftOtter.vp.measure; return !m.pinObj && !m.hoverObj && m.clabel.style.display === 'none' && m.hlabel.style.display === 'none'; });
 check('leaving the tool clears round-feature overlays', cleared);
 
 // ---------------------------------------------------------------- faces: cylinder height, parallel gap + offset, angle, X/Y/Z legs
-const res = () => app(() => { const m = window.LocalCAD.vp.measure; const r = m.result; return r ? { perp: r.perp, offset: r.offset, angle: r.angle, legs: (m.legs || []).map((l) => l.label.textContent), main: m.label.textContent, kinds: m.ents.map((e) => e.kind) } : null; });
+const res = () => app(() => { const m = window.DraftOtter.vp.measure; const r = m.result; return r ? { perp: r.perp, offset: r.offset, angle: r.angle, legs: (m.legs || []).map((l) => l.label.textContent), main: m.label.textContent, kinds: m.ents.map((e) => e.kind) } : null; });
 await reset((a) => { a.addShape('cylinder'); const n = a.model.nodes[0]; n.params.r = 10; n.params.h = 30; n.pos = [0, 0, 15]; a.commit(); });
 await click(4, 3, 30);
 await click(25, 0, 0);

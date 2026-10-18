@@ -252,13 +252,68 @@ export function pickFile(accept, multiple = false) {
 	});
 }
 
-// Minimal IndexedDB key/value store (used to remember the open design's file handle across reloads).
+// Storage from before the app was renamed (LocalCAD → DraftOtter): settings, tabs and autosaves kept under
+// "localcad-…" keys move to "draftotter-…" once, so nothing is lost. Runs on import, before anything reads storage.
+export const renameKey = (k) => (typeof k === 'string' && k.startsWith('localcad-') ? 'draftotter-' + k.slice(9) : k);
+(function migrateLocalStorage() {
+	try {
+		if (typeof localStorage === 'undefined') return;
+		const old = [];
+		for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('localcad-')) old.push(k); }
+		for (const k of old) {
+			const nk = renameKey(k);
+			const v = localStorage.getItem(k);
+			if (localStorage.getItem(nk) === null) {
+				try { localStorage.setItem(nk, v); } catch (e) {
+					// no room for two copies (a big autosave): free the old one first, and put it back if that still fails
+					localStorage.removeItem(k);
+					try { localStorage.setItem(nk, v); } catch (e2) { localStorage.setItem(k, v); continue; }
+				}
+			}
+			localStorage.removeItem(k);
+		}
+	} catch (e) { /* storage unavailable or full: the old keys stay and are tried again next time */ }
+})();
+
+// Minimal IndexedDB key/value store (file handles, large autosaves, undo history). One shared connection; the first
+// time it is created, whatever the old "localcad" database held is copied in (keys renamed) and the old one removed.
+let idbOpen = null;
 function idb() {
-	return new Promise((res, rej) => {
-		const r = indexedDB.open('localcad', 1);
-		r.onupgradeneeded = () => r.result.createObjectStore('kv');
-		r.onsuccess = () => res(r.result);
-		r.onerror = () => rej(r.error);
+	if (idbOpen) return idbOpen;
+	idbOpen = new Promise((res, rej) => {
+		let fresh = false;
+		const r = indexedDB.open('draftotter', 1);
+		r.onupgradeneeded = () => { r.result.createObjectStore('kv'); fresh = true; };
+		r.onsuccess = async () => {
+			const db = r.result;
+			if (fresh) { try { await migrateOldIdb(db); } catch (e) { /* keep going with what we have */ } }
+			res(db);
+		};
+		r.onerror = () => { idbOpen = null; rej(r.error); };
+	});
+	return idbOpen;
+}
+function migrateOldIdb(db) {
+	return new Promise((done) => {
+		const o = indexedDB.open('localcad');
+		let created = false;
+		o.onupgradeneeded = () => { created = true; }; // there was no old database
+		o.onerror = () => done();
+		o.onsuccess = () => {
+			const old = o.result;
+			if (created || !old.objectStoreNames.contains('kv')) { old.close(); indexedDB.deleteDatabase('localcad'); done(); return; }
+			const items = [];
+			const cur = old.transaction('kv').objectStore('kv').openCursor();
+			cur.onsuccess = () => {
+				const c = cur.result;
+				if (c) { items.push([c.key, c.value]); c.continue(); return; }
+				const t = db.transaction('kv', 'readwrite'), st = t.objectStore('kv');
+				for (const [k, v] of items) st.put(v, typeof k === 'string' ? k.split('localcad-').join('draftotter-') : k); // values (designs) as they are
+				t.oncomplete = () => { old.close(); indexedDB.deleteDatabase('localcad'); done(); };
+				t.onerror = () => { old.close(); done(); }; // copy failed: leave the old database alone
+			};
+			cur.onerror = () => { old.close(); done(); };
+		};
 	});
 }
 export async function idbGet(key) {

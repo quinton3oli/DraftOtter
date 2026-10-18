@@ -38,6 +38,6 @@ async function measure(url, label) {
 }
 
 await measure(base, 'web app');
-await measure(pathToFileURL('LocalCAD.html').href, 'file');
+await measure(pathToFileURL('DraftOtter.html').href, 'file');
 await browser.close();
 server.close();

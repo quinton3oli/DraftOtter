@@ -1,5 +1,5 @@
 // 3MF import: a Bambu Studio–style project (compressed, objects in separate model files, component transforms, names
-// in the project settings), a plain model in inches with a color, and a round trip through LocalCAD's own 3MF export.
+// in the project settings), a plain model in inches with a color, and a round trip through DraftOtter's own 3MF export.
 import puppeteer from 'puppeteer-core';
 import { pathToFileURL } from 'node:url';
 import { deflateRawSync, crc32 } from 'node:zlib';
@@ -8,7 +8,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let fails = 0;
@@ -59,7 +59,7 @@ const inches = zip({
 });
 
 const importB64 = (b64, name) => page.evaluate(async ([b64, name]) => {
-	const a = window.LocalCAD;
+	const a = window.DraftOtter;
 	a.model.doc.nodes = []; a.commit();
 	const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 	await a.import3MF([new File([bytes], name)]);
@@ -74,9 +74,9 @@ check('…they keep their layout from the plate, standing on the bed', Math.abs(
 parts = await importB64(inches, 'inch.3mf');
 check('a model in inches comes in at the right size (1 in = 25.4 mm), with its name and color', parts.length === 1 && parts[0].name === 'Inch cube' && parts[0].size.every((v) => Math.abs(v - 25.4) < 1e-3) && parts[0].color === '#c81e1e', JSON.stringify(parts));
 
-// round trip: LocalCAD's own 3MF export (two colored parts) back in
+// round trip: DraftOtter's own 3MF export (two colored parts) back in
 const round = await page.evaluate(async () => {
-	const a = window.LocalCAD;
+	const a = window.DraftOtter;
 	a.model.doc.nodes = []; a.commit();
 	a.addShape('box'); a.addShape('cylinder');
 	const [b, c] = a.model.nodes;
@@ -94,11 +94,11 @@ const round = await page.evaluate(async () => {
 	await a.import3MF([new File([data], 'pair.3mf')]);
 	return { before, after: a.model.nodes.map((n) => ({ name: n.name, color: n.color, vol: +a.engine.stats([n]).volume.toFixed(2) })) };
 });
-check('LocalCAD\'s own 3MF export comes back in with names, colors and shapes', round.after.length === 2 && round.after[0].name === 'Base' && round.after[1].name === 'Peg' && round.after[0].color === '#3366cc' && round.after[1].color === '#22aa44' && round.after.every((p, i) => Math.abs(p.vol - round.before[i]) < 0.05), JSON.stringify(round));
+check('DraftOtter\'s own 3MF export comes back in with names, colors and shapes', round.after.length === 2 && round.after[0].name === 'Base' && round.after[1].name === 'Peg' && round.after[0].color === '#3366cc' && round.after[1].color === '#22aa44' && round.after.every((p, i) => Math.abs(p.vol - round.before[i]) < 0.05), JSON.stringify(round));
 
 // a file that isn't a 3MF says so instead of failing silently
 const bad = await page.evaluate(async () => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.commit();
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.commit();
 	await a.import3MF([new File([new Uint8Array([1, 2, 3, 4])], 'broken.3mf')]);
 	return { n: a.model.nodes.length, toast: [...document.querySelectorAll('.toast')].map((t) => t.textContent).pop() };
 });

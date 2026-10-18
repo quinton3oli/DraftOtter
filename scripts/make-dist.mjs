@@ -15,12 +15,12 @@ execSync('node build.mjs', { cwd: root, stdio: 'inherit' });
 
 rmSync(path.join(root, 'dist'), { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
-copyFileSync(path.join(root, 'LocalCAD.html'), path.join(out, 'DraftOtter.html'));
+copyFileSync(path.join(root, 'DraftOtter.html'), path.join(out, 'DraftOtter.html'));
 
 // ---------------------------------------------------------------- Claude connection (MCP helper + Claude Desktop extension)
 const claudeOut = path.join(out, 'claude');
 mkdirSync(claudeOut, { recursive: true });
-copyFileSync(path.join(root, 'claude', 'localcad-mcp.mjs'), path.join(claudeOut, 'localcad-mcp.mjs'));
+copyFileSync(path.join(root, 'claude', 'draftotter-mcp.mjs'), path.join(claudeOut, 'draftotter-mcp.mjs'));
 console.log('packing DraftOtter.mcpb …');
 execSync(`npx mcpb pack claude "${path.join(claudeOut, 'DraftOtter.mcpb')}"`, { cwd: root, stdio: 'ignore' });
 writeFileSync(path.join(claudeOut, 'README.txt'), `Connect Claude to DraftOtter
@@ -35,7 +35,7 @@ change live, and each one can be undone.
    - Claude Desktop: double-click DraftOtter.mcpb (or drag it onto Claude Desktop → Settings → Extensions) and
      install it. It needs no other software.
    - Claude Code: run (Node.js 18 or newer required)
-       claude mcp add localcad -- node "<this folder>/localcad-mcp.mjs"
+       claude mcp add draftotter -- node "<this folder>/draftotter-mcp.mjs"
 3. Keep DraftOtter open while you chat, and ask for example:
    "Add a 60 × 40 × 3 mm plate with M3 countersunk holes 5 mm in from each corner."
 

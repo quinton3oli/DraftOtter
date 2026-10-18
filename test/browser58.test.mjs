@@ -7,7 +7,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
@@ -36,18 +36,18 @@ await page.evaluate(() => {
 	};
 	window.vol = (g) => { const P = (g.index ? g.toNonIndexed() : g).attributes.position.array; let v = 0; for (let i = 0; i < P.length; i += 9) v += (P[i] * (P[i + 4] * P[i + 8] - P[i + 5] * P[i + 7]) - P[i + 1] * (P[i + 3] * P[i + 8] - P[i + 5] * P[i + 6]) + P[i + 2] * (P[i + 3] * P[i + 7] - P[i + 4] * P[i + 6])) / 6; return v; };
 	window.tris = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
-	window.fresh = () => { const a = window.LocalCAD; a.model.doc.nodes = []; a.commit(); };
-	window.shape = (type, params, pos, hole = false) => { const a = window.LocalCAD; a.addShape(type); const n = a.model.nodes[a.model.nodes.length - 1]; Object.assign(n.params, params); n.pos = pos; n.rot = [0, 0, 0]; n.hole = hole; a.commit(); return n; };
+	window.fresh = () => { const a = window.DraftOtter; a.model.doc.nodes = []; a.commit(); };
+	window.shape = (type, params, pos, hole = false) => { const a = window.DraftOtter; a.addShape(type); const n = a.model.nodes[a.model.nodes.length - 1]; Object.assign(n.params, params); n.pos = pos; n.rot = [0, 0, 0]; n.hole = hole; a.commit(); return n; };
 });
 
-const trouble = () => { const a = window.LocalCAD, it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return { level: it.level, title: it.title, boxes: it.highlight ? it.highlight.boxes.map((b) => [b.min.toArray(), b.max.toArray()]) : [] }; };
+const trouble = () => { const a = window.DraftOtter, it = a.checkPrint().items.find((i) => i.kind === 'slicer'); a.closeCheckPanel(); return { level: it.level, title: it.title, boxes: it.highlight ? it.highlight.boxes.map((b) => [b.min.toArray(), b.max.toArray()]) : [] }; };
 await page.evaluate((src) => { window.trouble = eval(src); }, trouble.toString());
 
 // two blocks touching only along one edge
 const kiss = await page.evaluate(() => {
 	fresh();
 	const A = shape('box', { w: 10, d: 10, h: 10 }, [0, 0, 5]), B = shape('box', { w: 10, d: 10, h: 10 }, [10, 10, 5]);
-	const g = window.LocalCAD.engine.printable([A, B], true);
+	const g = window.DraftOtter.engine.printable([A, B], true);
 	return { vol: vol(g), t: trouble() };
 });
 check('blocks touching along an edge: both blocks are exported', Math.abs(kiss.vol - 2000) < 0.01, kiss.vol.toFixed(4));
@@ -76,7 +76,7 @@ check('…but not when they are a real 1 mm apart, or for fine round holes', apa
 const keep = await page.evaluate(() => {
 	fresh();
 	const B = shape('box', { w: 30, d: 20, h: 10, radius: 0.5, seg: 12 }, [0, 0, 5]), C = shape('cylinder', { r: 3, h: 10, seg: 96 }, [40, 0, 5]);
-	const e = window.LocalCAD.engine;
+	const e = window.DraftOtter.engine;
 	return { box: [tris(e.world(B)), tris(e.printable([B], true))], vb: [vol(e.world(B)), vol(e.printable([B], true))], vc: [vol(e.world(C)), vol(e.printable([C], true))] };
 });
 check('a small fillet keeps every facet in the export', keep.box[0] === keep.box[1], JSON.stringify(keep.box));

@@ -2,7 +2,7 @@
 
 # DraftOtter
 
-A precise, offline CAD tool for designing 3D-printable parts. Everything is in one file: open **`DraftOtter.html`** (from the download package; it is `LocalCAD.html` when built from these sources) in Chrome, Edge or Firefox (double-click works, no server or internet needed) and export STL.
+A precise, offline CAD tool for designing 3D-printable parts. Everything is in one file: open **`DraftOtter.html`** (from the download package, or built from these sources with `npm run build`) in Chrome, Edge or Firefox (double-click works, no server or internet needed) and export STL.
 
 It is also a web app: **https://localcad-8158c.web.app**. Open it in Chrome or Edge and choose Install (or File → Install DraftOtter) to get it as an app that works offline. The installed app opens `.lcad.json` design files you double-click (Chrome and Edge). When a new version is deployed, it offers to reload. Designs stay on your device: the web app stores them in the browser like the file version does, separately from it.
 
@@ -104,16 +104,16 @@ Claude, with your own Claude subscription, can design with you. It reads the ope
 1. In DraftOtter, open **More (wrench) → Connect Claude** and tick **Allow Claude to connect**. A badge in the status bar shows the connection.
 2. Set up Claude once:
    - **Claude Desktop:** install `claude/DraftOtter.mcpb` (from the release zip, or `npm run dist`) by double-clicking it or dragging it onto Settings → Extensions. Nothing else is needed.
-   - **Claude Code:** run `claude mcp add localcad -- node "<path>/claude/localcad-mcp.mjs"` (needs Node.js 18+). The Connect Claude dialog shows the exact command for your copy.
+   - **Claude Code:** run `claude mcp add draftotter -- node "<path>/claude/draftotter-mcp.mjs"` (needs Node.js 18+). The Connect Claude dialog shows the exact command for your copy.
 3. Ask, for example: “add a 60 × 40 × 3 mm plate with M3 countersunk holes 5 mm in from each corner”.
 
-How it works: `claude/localcad-mcp.mjs` is a small MCP server without dependencies. Claude starts it, and the DraftOtter page connects to it over a WebSocket on 127.0.0.1 (port 47821, which you can change). Only pages opened from a file (or served by the helper) are accepted, only one DraftOtter window connects at a time, and nothing connects while the box is unticked. Exported files go to your Downloads folder unless Claude is given a path. In Claude Desktop you can change the folder in the extension's settings; for Claude Code, set `LOCALCAD_EXPORT_DIR`. The tools are `get_design`, `list_shape_types`, `add_shape`, `sketch`, `update_object`, `move`, `combine`, `ungroup`, `duplicate`, `delete_objects`, `set_variables`, `get_stats`, `screenshot`, `select`, `undo` and `export`.
+How it works: `claude/draftotter-mcp.mjs` is a small MCP server without dependencies. Claude starts it, and the DraftOtter page connects to it over a WebSocket on 127.0.0.1 (port 47821, which you can change). Only pages opened from a file (or served by the helper) are accepted, only one DraftOtter window connects at a time, and nothing connects while the box is unticked. Exported files go to your Downloads folder unless Claude is given a path. In Claude Desktop you can change the folder in the extension's settings; for Claude Code, set `DRAFTOTTER_EXPORT_DIR`. The tools are `get_design`, `list_shape_types`, `add_shape`, `sketch`, `update_object`, `move`, `combine`, `ungroup`, `duplicate`, `delete_objects`, `set_variables`, `get_stats`, `screenshot`, `select`, `undo` and `export`.
 
 ## Development
 
 ```
 npm install
-npm run build      # bundles src/ into LocalCAD.html
+npm run build      # bundles src/ into DraftOtter.html
 npm run watch      # rebuild on change
 npm test           # geometry/CSG checks + headless browser tests (needs Chrome or Edge)
 node test/startup.bench.mjs   # startup time (warm) of the web app and the single file
@@ -126,6 +126,6 @@ npm run dist       # end-user zip: DraftOtter.html, readme, licenses, and the Cl
 
 The web app's extra files are in `pwa/` (manifest, service worker, icons) and `src/pwa.js` (install, updates, opening files); `firebase.json` sets the hosting headers.
 
-Startup: library thumbnails are kept in the browser per build and drawn in idle time after the app is ready; the 3D view compiles its shaders in the background before the first frame, and the release build skips the per-shader error check (turn it on with `localStorage['localcad-debug-shaders'] = 1`).
+Startup: library thumbnails are kept in the browser per build and drawn in idle time after the app is ready; the 3D view compiles its shaders in the background before the first frame, and the release build skips the per-shader error check (turn it on with `localStorage['draftotter-debug-shaders'] = 1`).
 
-Source is in `src/`: `shapes.js` (parametric geometry), `engine.js` (caching and CSG), `viewport.js` (3D view and interaction), `app.js` (UI and commands), `sketch.js` (2D profile editor) and `model.js` (document and undo). Feature modules: `threemf.js` / `zip.js` (3MF), `vector.js` / `vectorUI.js` (DXF & SVG), `printcheck.js`, `analysis.js` (mass properties), `split.js`, `fits.js` / `fitcache.js`, `csgcore.js` / `csgworker.js` / `workers.js` (geometry kernel and background workers), `wrap.js`, `assembly.js`, `params.js` (configurations & templates), `timeline.js`, `history.js` (commit graph and three-way merge), `historyui.js` (History & branches), `versions.js` (visual compare), `sculpt.js` (sculpting brushes and mesh) and `sculptui.js` (Sculpt mode), `tabs.js` (design tabs), `drawing.js`, `step.js` and `claudelink.js` (the page side of the Claude connection; the MCP server is `claude/localcad-mcp.mjs`, and `claude/manifest.json` describes the Claude Desktop extension).
+Source is in `src/`: `shapes.js` (parametric geometry), `engine.js` (caching and CSG), `viewport.js` (3D view and interaction), `app.js` (UI and commands), `sketch.js` (2D profile editor) and `model.js` (document and undo). Feature modules: `threemf.js` / `zip.js` (3MF), `vector.js` / `vectorUI.js` (DXF & SVG), `printcheck.js`, `analysis.js` (mass properties), `split.js`, `fits.js` / `fitcache.js`, `csgcore.js` / `csgworker.js` / `workers.js` (geometry kernel and background workers), `wrap.js`, `assembly.js`, `params.js` (configurations & templates), `timeline.js`, `history.js` (commit graph and three-way merge), `historyui.js` (History & branches), `versions.js` (visual compare), `sculpt.js` (sculpting brushes and mesh) and `sculptui.js` (Sculpt mode), `tabs.js` (design tabs), `drawing.js`, `step.js` and `claudelink.js` (the page side of the Claude connection; the MCP server is `claude/draftotter-mcp.mjs`, and `claude/manifest.json` describes the Claude Desktop extension).

@@ -13,14 +13,14 @@ await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath:
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('dialog', (d) => d.accept());
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 const key = async (k, mods = []) => { for (const m of mods) await page.keyboard.down(m); await page.keyboard.press(k); for (const m of [...mods].reverse()) await page.keyboard.up(m); await wait(150); };
-const state = () => app(() => ({ text: document.querySelector('#save-state').textContent, title: document.title, name: window.LocalCAD.model.doc.name }));
+const state = () => app(() => ({ text: document.querySelector('#save-state').textContent, title: document.title, name: window.DraftOtter.model.doc.name }));
 
 // Fake File System Access API: records pickers shown and what was written to each "file".
 await app(() => {
@@ -32,7 +32,7 @@ await app(() => {
 		createWritable: async () => { let buf = ''; return { write: async (d) => { buf += d; }, close: async () => { window.__fs.files[name] = buf; } }; },
 	});
 	window.showSaveFilePicker = async (opts) => { window.__fs.pickers++; window.__fs.suggested = opts.suggestedName; if (window.__fs.cancel) { const e = new Error('cancel'); e.name = 'AbortError'; throw e; } return handle(window.__fs.next); };
-	const a = window.LocalCAD;
+	const a = window.DraftOtter;
 	a.model.doc.nodes = []; a.savedSig = null; a.fileHandle = null; a.commit();
 	a.addShape('box');
 	document.activeElement.blur();
@@ -48,7 +48,7 @@ check('first Ctrl+S opens the save dialog and writes the file', fsState.pickers 
 check('design is renamed to the chosen file name; shows Saved', s.name === 'Bracket v1' && s.text === 'Saved' && !s.title.startsWith('•'), JSON.stringify(s));
 
 // Edit -> unsaved; Ctrl+S writes to the same file without asking again
-await app(() => { const a = window.LocalCAD; a.addShape('cylinder'); document.activeElement.blur(); });
+await app(() => { const a = window.DraftOtter; a.addShape('cylinder'); document.activeElement.blur(); });
 s = await state();
 check('editing shows "Unsaved changes"', s.text === 'Unsaved changes' && s.title.startsWith('•'), JSON.stringify(s));
 await key('s', ['Control']);
@@ -63,7 +63,7 @@ s = await state();
 fsState = await app(() => ({ pickers: window.__fs.pickers, suggested: window.__fs.suggested, files: Object.keys(window.__fs.files) }));
 check('Ctrl+Shift+S asks for a new file and saves a copy', fsState.pickers === 2 && fsState.files.includes('Bracket v2.lcad.json') && s.name === 'Bracket v2', JSON.stringify({ fsState, s }));
 check('Save as suggests the current name', fsState.suggested === 'Bracket v1.lcad.json', fsState.suggested);
-await app(() => { window.LocalCAD.addShape('sphere'); document.activeElement.blur(); });
+await app(() => { window.DraftOtter.addShape('sphere'); document.activeElement.blur(); });
 await key('s', ['Control']);
 const counts = await app(() => ({ v1: JSON.parse(window.__fs.files['Bracket v1.lcad.json']).doc.nodes.length, v2: JSON.parse(window.__fs.files['Bracket v2.lcad.json']).doc.nodes.length }));
 check('later saves go to the new file only', counts.v1 === 2 && counts.v2 === 3, JSON.stringify(counts));
@@ -75,13 +75,13 @@ s = await state();
 check('cancelling Save as keeps everything as it was', s.name === 'Bracket v2' && s.text === 'Saved', JSON.stringify(s));
 
 // Toolbar has a Save as button
-await app(() => window.LocalCAD.fileMenu(document.querySelector('#toolbar .tb')));
+await app(() => window.DraftOtter.fileMenu(document.querySelector('#toolbar .tb')));
 check('File menu has Save as', await app(() => [...document.querySelectorAll('.menu button')].some((b) => b.textContent.startsWith('Save as'))));
 await app(() => document.querySelectorAll('.menu').forEach((m) => m.remove()));
 
 // Fallback (no File System Access API): Save as asks for a name and downloads
-await app(() => { delete window.showSaveFilePicker; window.showSaveFilePicker = undefined; const a = window.LocalCAD; a.fileHandle = null; });
-await app(() => { window.LocalCAD.fileMenu(document.querySelector('#toolbar .tb')); [...document.querySelectorAll('.menu button')].find((b) => b.textContent.startsWith('Save as')).click(); });
+await app(() => { delete window.showSaveFilePicker; window.showSaveFilePicker = undefined; const a = window.DraftOtter; a.fileHandle = null; });
+await app(() => { window.DraftOtter.fileMenu(document.querySelector('#toolbar .tb')); [...document.querySelectorAll('.menu button')].find((b) => b.textContent.startsWith('Save as')).click(); });
 await wait(150);
 check('fallback shows a file-name dialog', !!(await page.$('#saveas-name')));
 await app(() => { document.querySelector('#saveas-name').value = 'Gearbox lid'; });
@@ -91,10 +91,10 @@ const files = readdirSync(dl);
 s = await state();
 check('fallback downloads <name>.lcad.json and renames the design', files.includes('Gearbox lid.lcad.json') && s.name === 'Gearbox lid' && s.text === 'Saved', JSON.stringify({ files, s }));
 const saved = JSON.parse(readFileSync(path.join(dl, 'Gearbox lid.lcad.json'), 'utf8'));
-check('downloaded file is a valid LocalCAD design', saved.format === 'localcad' && saved.doc.nodes.length === 3);
+check('downloaded file is a valid DraftOtter design', saved.format === 'draftotter' && saved.doc.nodes.length === 3);
 
 // Saved state survives a reload
-await app(() => window.LocalCAD.autosaveNow());
+await app(() => window.DraftOtter.autosaveNow());
 await page.reload();
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 s = await state();

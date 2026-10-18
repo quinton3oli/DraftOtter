@@ -8,15 +8,15 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 const modalBtn = (label) => app((label) => [...document.querySelectorAll('.modal .btn')].find((b) => b.textContent.trim() === label).click(), label);
-const parts = () => app(() => window.LocalCAD.model.nodes.map((n) => { const a = window.LocalCAD, b = a.worldBox(n); return { type: n.type, name: n.name, size: [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z].map((v) => +v.toFixed(3)), vol: +a.engine.stats([n]).volume.toFixed(1) }; }));
-const reset = () => app(() => { localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = []; a.commit(); });
+const parts = () => app(() => window.DraftOtter.model.nodes.map((n) => { const a = window.DraftOtter, b = a.worldBox(n); return { type: n.type, name: n.name, size: [b.max.x - b.min.x, b.max.y - b.min.y, b.max.z - b.min.z].map((v) => +v.toFixed(3)), vol: +a.engine.stats([n]).volume.toFixed(1) }; }));
+const reset = () => app(() => { localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = []; a.commit(); });
 
 // a box 1 × 2 × 0.5 (x, y, z) with Y up, as an OBJ (the usual export of AI image-to-3D tools is Y-up)
 const box = (sx, sy, sz, ox = 0) => {
@@ -28,7 +28,7 @@ const box = (sx, sy, sz, ox = 0) => {
 const obj = (() => { const b = box(1, 2, 0.5); return b.v.map((p) => `v ${p.join(' ')}`).join('\n') + '\n' + b.f.map((q) => `f ${q.map((i) => i + 1).join(' ')}`).join('\n') + '\n'; })();
 
 await reset();
-await app((text) => window.LocalCAD.importMeshFile(new File([text], 'figurine.obj')), obj);
+await app((text) => window.DraftOtter.importMeshFile(new File([text], 'figurine.obj')), obj);
 await page.waitForSelector('#mi-size');
 const objInfo = await app(() => document.querySelector('.modal .form p').textContent);
 check('OBJ: the dialog reports meshes, triangles and size, and suggests 50 mm for a tiny model', /1 mesh, 12 triangles/.test(objInfo) && (await app(() => document.querySelector('#mi-size').value)) === '50', objInfo);
@@ -62,7 +62,7 @@ const glb = (() => {
 	return [...Buffer.concat([head, ch(js.length, 0x4e4f534a), js, ch(bin.length, 0x004e4942), bin])];
 })();
 await reset();
-await app((bytes) => window.LocalCAD.importMeshFile(new File([new Uint8Array(bytes)], 'pieces.glb')), glb);
+await app((bytes) => window.DraftOtter.importMeshFile(new File([new Uint8Array(bytes)], 'pieces.glb')), glb);
 await page.waitForSelector('#mi-merge');
 const glbInfo = await app(() => document.querySelector('.modal .form p').textContent);
 check('GLB: two meshes found (sizes in meters)', /2 meshes, 24 triangles/.test(glbInfo) && /meters/.test(glbInfo), glbInfo);
@@ -79,7 +79,7 @@ await app(async () => {
 	const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 200, 0); gr.addColorStop(0, '#000'); gr.addColorStop(1, '#fff');
 	g.fillStyle = gr; g.fillRect(0, 0, 200, 100);
 	window.__grad = new File([await new Promise((r) => c.toBlob(r, 'image/png'))], 'gradient.png', { type: 'image/png' });
-	window.LocalCAD.importRelief(window.__grad);
+	window.DraftOtter.importRelief(window.__grad);
 });
 await page.waitForSelector('#rl-info');
 await app(() => { const set = (id, v) => { const i = document.querySelector('#' + id); i.value = v; i.dispatchEvent(new Event('change')); }; set('rl-w', '100'); set('rl-min', '0.8'); set('rl-max', '3'); set('rl-frame', '0'); const s = document.querySelector('#rl-smooth'); s.value = 0; s.dispatchEvent(new Event('input')); });
@@ -93,12 +93,12 @@ p = await parts();
 const lith = p[0];
 check('lithophane: a mesh 100 mm wide, 0.8 to 3 mm thick', lith && lith.type === 'mesh' && /lithophane/.test(lith.name) && Math.abs(lith.size[0] - 100) < 1e-3 && Math.abs(lith.size[2] - 3) < 0.01, JSON.stringify(lith));
 check('…dark side thick, light side thin: volume ≈ 100 × 49.75 × 1.9', lith && Math.abs(lith.vol - 100 * 49.75 * 1.9) / (100 * 49.75 * 1.9) < 0.03, String(lith && lith.vol));
-const solid = await app(() => { const a = window.LocalCAD, n = a.model.nodes[0]; a.addShape('cylinder'); const c = a.model.nodes[1]; c.hole = true; c.params.r = 5; c.params.h = 20; c.pos = [0, 0, 1]; const m = n; m.pos = [0, 0, 0]; a.commit(); a.setSelection([m.id, c.id]); a.group(); const g = a.model.nodes[0]; return { err: a.engine.errors.has(g.id), vol: a.engine.stats([g]).volume }; });
+const solid = await app(() => { const a = window.DraftOtter, n = a.model.nodes[0]; a.addShape('cylinder'); const c = a.model.nodes[1]; c.hole = true; c.params.r = 5; c.params.h = 20; c.pos = [0, 0, 1]; const m = n; m.pos = [0, 0, 0]; a.commit(); a.setSelection([m.id, c.id]); a.group(); const g = a.model.nodes[0]; return { err: a.engine.errors.has(g.id), vol: a.engine.stats([g]).volume }; });
 check('…and watertight: a hole can be cut through it', !solid.err && solid.vol < lith.vol - 100, JSON.stringify(solid));
 
 // relief with a frame
 await reset();
-await app(() => window.LocalCAD.importRelief(window.__grad));
+await app(() => window.DraftOtter.importRelief(window.__grad));
 await page.waitForSelector('#rl-info');
 await app(() => { const m = document.querySelector('#rl-mode'); m.value = 'light'; m.dispatchEvent(new Event('change')); const set = (id, v) => { const i = document.querySelector('#' + id); i.value = v; i.dispatchEvent(new Event('change')); }; set('rl-w', '60'); set('rl-frame', '4'); });
 await wait(200);

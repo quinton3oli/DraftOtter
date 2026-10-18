@@ -9,7 +9,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error' || /thumbnail failed/.test(m.text())) errors.push(m.text()); });
 const t0 = Date.now();
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const readyMs = Date.now() - t0;
 await page.evaluate(() => { localStorage.clear(); });
@@ -39,7 +39,7 @@ check('search by keyword "pegboard" finds Grid panel', r2.length === 1 && r2[0] 
 await page.screenshot({ path: 'test/shots/71-search.png' });
 await page.keyboard.press('Enter');
 await wait(300);
-check('Enter adds the top search result', await app(() => window.LocalCAD.model.nodes.some((n) => n.type === 'gridpanel')));
+check('Enter adds the top search result', await app(() => window.DraftOtter.model.nodes.some((n) => n.type === 'gridpanel')));
 await search.click({ clickCount: 3 });
 await page.keyboard.press('Escape');
 await wait(100);
@@ -51,11 +51,11 @@ check('sections collapse', collapsedHidden);
 await app(() => [...document.querySelectorAll('#library .lib-title.collapsible')].find((t) => t.textContent.includes('Geometric')).click());
 // Add every library item and make sure each builds
 const keys = await app(() => [...document.querySelectorAll('#library .lib-item')].map((i) => i.querySelector('span').textContent.trim()).filter((t) => !['Import STL', 'Sketch', 'Save selection'].includes(t)));
-await app(() => { const a = window.LocalCAD; a.model.doc.nodes = []; a.commit(); });
+await app(() => { const a = window.DraftOtter; a.model.doc.nodes = []; a.commit(); });
 const bad = [];
 for (const label of keys) {
 	const ok = await app((label) => {
-		const a = window.LocalCAD;
+		const a = window.DraftOtter;
 		const n0 = a.model.nodes.length;
 		[...document.querySelectorAll('#library .lib-item')].find((i) => i.querySelector('span').textContent.trim() === label).click();
 		const n = a.model.nodes[a.model.nodes.length - 1];
@@ -64,7 +64,7 @@ for (const label of keys) {
 	if (!ok) bad.push(label);
 }
 check('every library item adds, builds and sits on the bed', bad.length === 0, bad.length ? 'problems: ' + bad.join(', ') : `${keys.length} items`);
-await app(() => { const a = window.LocalCAD; a.setSelection([]); a.frame(); });
+await app(() => { const a = window.DraftOtter; a.setSelection([]); a.frame(); });
 await wait(800);
 await page.screenshot({ path: 'test/shots/72-all-shapes.png' });
 console.log('ERRORS:', errors.filter((e) => !/GPU stall|swiftshader|WebGL|GL_|ReadPixels/i.test(e)).join('\n') || 'none');

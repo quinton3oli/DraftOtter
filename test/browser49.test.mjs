@@ -9,7 +9,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -19,7 +19,7 @@ const ptPos = (i) => app((i) => { const d = document.querySelector('.modal-back'
 const marks = () => app(() => { const lines = document.querySelector('.sk-points').value.split('\n'); const hl = document.querySelector('.sk-points-hl'); const out = []; let li = 0; for (const node of hl.childNodes) { if (node.nodeName === 'MARK') out.push(li); li += (node.textContent.match(/\n/g) || []).length; } return out.map((l) => [l, lines[l]]); });
 const selPts = () => app(() => [...document.querySelector('.modal-back').__sketch.st.sel.pts]);
 
-await app(() => { localStorage.clear(); window.LocalCAD.newSketch(); });
+await app(() => { localStorage.clear(); window.DraftOtter.newSketch(); });
 await wait(400);
 await app(() => { const ta = document.querySelector('.sk-points'); ta.value = '0, 0\n30, 0\n30, 20\n15, 30\n0, 20'; ta.dispatchEvent(new Event('input')); });
 await wait(200);

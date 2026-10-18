@@ -242,6 +242,6 @@ export class Model {
 	}
 
 	serialize() {
-		return JSON.stringify({ format: 'localcad', version: 1, doc: this.doc, blobs: this.usedBlobs() });
+		return JSON.stringify({ format: 'draftotter', version: 1, doc: this.doc, blobs: this.usedBlobs() });
 	}
 }

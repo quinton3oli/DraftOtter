@@ -5,14 +5,14 @@ const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Googl
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
-await app(() => { localStorage.clear(); const a = window.LocalCAD; a.addShape('box'); a.addShape('sphere'); a.setSelection([]); a.frame(); });
+await app(() => { localStorage.clear(); const a = window.DraftOtter; a.addShape('box'); a.addShape('sphere'); a.setSelection([]); a.frame(); });
 await wait(600);
 const cv = await (await page.$('#viewport canvas')).boundingBox();
-const cam = () => app(() => { const vp = window.LocalCAD.vp; const p = vp.camera.position, t = vp.controls.target; return { az: Math.atan2(p.y - t.y, p.x - t.x), t: [t.x, t.y, t.z], d: p.distanceTo(t) }; });
+const cam = () => app(() => { const vp = window.DraftOtter.vp; const p = vp.camera.position, t = vp.controls.target; return { az: Math.atan2(p.y - t.y, p.x - t.x), t: [t.x, t.y, t.z], d: p.distanceTo(t) }; });
 const drag = async (button, x0, y0, dx, dy) => {
 	await page.mouse.move(x0, y0);
 	await page.mouse.down({ button });
@@ -45,19 +45,19 @@ await drag('left', ex, ey, 150, 0);
 b = await cam();
 check('left-drag on empty does not orbit', Math.abs(b.az - a.az) < 1e-3, `azimuth change ${(b.az - a.az).toExponential(2)}`);
 // Box select everything: drag a rectangle over the whole viewport area
-await app(() => window.LocalCAD.frame());
+await app(() => window.DraftOtter.frame());
 await wait(500);
 await drag('left', cv.x + 30, cv.y + 120, cv.width - 160, cv.height - 160);
-check('left-drag box-selects', (await app(() => window.LocalCAD.sel.length)) === 2, `selected ${await app(() => window.LocalCAD.sel.length)}`);
+check('left-drag box-selects', (await app(() => window.DraftOtter.sel.length)) === 2, `selected ${await app(() => window.DraftOtter.sel.length)}`);
 // Click empty clears
 await page.mouse.click(ex, ey);
 await wait(100);
-check('left-click empty clears selection', (await app(() => window.LocalCAD.sel.length)) === 0);
+check('left-click empty clears selection', (await app(() => window.DraftOtter.sel.length)) === 0);
 // Left-drag on an object still moves it
-const p = await app(() => { const a = window.LocalCAD; const o = a.vp.objs.get(a.model.nodes[0].id); return a.vp.project(o.position); });
-const before = await app(() => window.LocalCAD.model.nodes[0].pos.slice());
+const p = await app(() => { const a = window.DraftOtter; const o = a.vp.objs.get(a.model.nodes[0].id); return a.vp.project(o.position); });
+const before = await app(() => window.DraftOtter.model.nodes[0].pos.slice());
 await drag('left', cv.x + p.x, cv.y + p.y, 60, 0);
-const after = await app(() => window.LocalCAD.model.nodes[0].pos.slice());
+const after = await app(() => window.DraftOtter.model.nodes[0].pos.slice());
 check('left-drag object moves it', before.join() !== after.join() && after[2] === before[2], `${before} -> ${after}`);
 // Right-click (no drag) on object opens the context menu
 await page.mouse.click(cv.x + p.x + 30, cv.y + p.y, { button: 'right' });

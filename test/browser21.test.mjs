@@ -8,15 +8,15 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 const shot = (n) => page.screenshot({ path: `test/shots/${n}.png` });
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
-const reset = (src) => app((src) => { localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); (0, eval)(src)(a); a.frame(); }, src.toString());
-const info = () => app(() => { const a = window.LocalCAD; const g = a.model.nodes[0]; const b = a.worldBox(g); return { n: a.model.nodes.length, type: g.type, mode: g.mode, name: g.name, vol: +a.engine.stats([g]).volume.toFixed(1), size: b.getSize(b.min.clone()).toArray().map((v) => +v.toFixed(2)) }; });
+const reset = (src) => app((src) => { localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.sel = []; a.commit(); (0, eval)(src)(a); a.frame(); }, src.toString());
+const info = () => app(() => { const a = window.DraftOtter; const g = a.model.nodes[0]; const b = a.worldBox(g); return { n: a.model.nodes.length, type: g.type, mode: g.mode, name: g.name, vol: +a.engine.stats([g]).volume.toFixed(1), size: b.getSize(b.min.clone()).toArray().map((v) => +v.toFixed(2)) }; });
 
 // ---------------------------------------------------------------- two boxes → one long box (Ctrl+H)
 await reset((a) => { a.addShape('box'); a.addShape('box'); const [p, q] = a.model.nodes; for (const n of [p, q]) { n.params.w = n.params.d = n.params.h = 10; } p.pos = [0, 0, 5]; q.pos = [20, 0, 5]; a.commit(); a.setSelection([p.id, q.id]); });
@@ -35,11 +35,11 @@ await wait(400);
 r = await info();
 const capsule = (4 / 3) * Math.PI * 1000 + Math.PI * 100 * 30;
 check('hull of two spheres is a capsule', Math.abs(r.vol - capsule) / capsule < 0.03 && Math.abs(r.size[0] - 50) < 0.1, JSON.stringify(r) + ' expect ≈' + capsule.toFixed(0));
-await app(() => { const a = window.LocalCAD; const g = a.model.nodes[0]; a.addShape('cylinder'); const c = a.model.nodes[1]; c.params.r = 3; c.params.h = 40; c.hole = true; c.pos = [15 + g.pos[0], g.pos[1], 0]; a.commit(); });
+await app(() => { const a = window.DraftOtter; const g = a.model.nodes[0]; a.addShape('cylinder'); const c = a.model.nodes[1]; c.params.r = 3; c.params.h = 40; c.hole = true; c.pos = [15 + g.pos[0], g.pos[1], 0]; a.commit(); });
 await wait(200);
-const withHole = await app(() => { const a = window.LocalCAD; const [g, c] = a.model.nodes; a.setSelection([g.id, c.id]); a.group('union'); return +a.engine.stats([a.model.nodes[0]]).volume.toFixed(1); });
+const withHole = await app(() => { const a = window.DraftOtter; const [g, c] = a.model.nodes; a.setSelection([g.id, c.id]); a.group('union'); return +a.engine.stats([a.model.nodes[0]]).volume.toFixed(1); });
 check('a hole grouped with the hull cuts through it', withHole < r.vol - 500, `${withHole} < ${r.vol}`);
-await app(() => { const a = window.LocalCAD; a.setSelection([]); a.frame(); });
+await app(() => { const a = window.DraftOtter; a.setSelection([]); a.frame(); });
 await wait(400);
 await shot('140-hull-capsule');
 
@@ -53,8 +53,8 @@ check('holes in a hull group are subtracted from the hull', Math.abs(r.vol - exp
 // ---------------------------------------------------------------- single object: convex wrap of a star
 await reset((a) => { a.addShape('star'); a.setSelection([a.model.nodes[0].id]); });
 await wait(300);
-const starVol = await app(() => +window.LocalCAD.engine.stats([window.LocalCAD.model.nodes[0]]).volume.toFixed(1));
-await app(() => window.LocalCAD.group('hull'));
+const starVol = await app(() => +window.DraftOtter.engine.stats([window.DraftOtter.model.nodes[0]]).volume.toFixed(1));
+await app(() => window.DraftOtter.group('hull'));
 await wait(300);
 r = await info();
 check('hulling a single object wraps it (star → filled polygon)', r.mode === 'hull' && r.vol > starVol * 1.3, `${starVol} → ${r.vol}`);

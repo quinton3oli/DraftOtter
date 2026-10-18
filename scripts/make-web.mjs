@@ -16,7 +16,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(path.join(out, 'icons'), { recursive: true });
 mkdirSync(path.join(out, 'claude'), { recursive: true });
 
-const html = readFileSync(path.join(root, 'LocalCAD.html'));
+const html = readFileSync(path.join(root, 'DraftOtter.html'));
 writeFileSync(path.join(out, 'index.html'), html);
 copyFileSync(path.join(root, 'pwa', 'manifest.webmanifest'), path.join(out, 'manifest.webmanifest'));
 for (const f of readdirSync(path.join(root, 'pwa', 'icons'))) copyFileSync(path.join(root, 'pwa', 'icons', f), path.join(out, 'icons', f));
@@ -25,7 +25,7 @@ const build = createHash('sha256').update(html).update(readFileSync(path.join(ro
 writeFileSync(path.join(out, 'sw.js'), readFileSync(path.join(root, 'pwa', 'sw.js'), 'utf8').replace('__BUILD__', build));
 
 // Claude connection downloads (the Connect Claude dialog links to them)
-copyFileSync(path.join(root, 'claude', 'localcad-mcp.mjs'), path.join(out, 'claude', 'localcad-mcp.mjs'));
+copyFileSync(path.join(root, 'claude', 'draftotter-mcp.mjs'), path.join(out, 'claude', 'draftotter-mcp.mjs'));
 execSync(`npx mcpb pack claude "${path.join(out, 'claude', 'DraftOtter.mcpb')}"`, { cwd: root, stdio: 'ignore' });
 
 const mb = (p) => (statSync(p).size / 1024 / 1024).toFixed(2) + ' MB';

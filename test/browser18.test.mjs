@@ -6,16 +6,16 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 const cv = await (await page.$('#viewport canvas')).boundingBox();
-const screen = (x, y, z) => app(([x, y, z]) => { const vp = window.LocalCAD.vp; vp.render(); return vp.project(vp.camera.position.clone().set(x, y, z)); }, [x, y, z]);
-const reset = (snap, src) => app(([snap, src]) => { localStorage.clear(); const a = window.LocalCAD; a.setTool(null); a.model.doc.nodes = []; a.model.settings.snap = snap; a.sel = []; a.commit(); (0, eval)(src)(a); a.setSelection([]); a.frame(); }, [snap, src.toString()]);
-const box = (i) => app((i) => { const a = window.LocalCAD; const b = a.worldBox(a.model.nodes[i]); const c = b.getCenter(b.min.clone()); return { c: c.toArray().map((v) => +v.toFixed(3)), minz: +b.min.z.toFixed(3) }; }, i);
+const screen = (x, y, z) => app(([x, y, z]) => { const vp = window.DraftOtter.vp; vp.render(); return vp.project(vp.camera.position.clone().set(x, y, z)); }, [x, y, z]);
+const reset = (snap, src) => app(([snap, src]) => { localStorage.clear(); const a = window.DraftOtter; a.setTool(null); a.model.doc.nodes = []; a.model.settings.snap = snap; a.sel = []; a.commit(); (0, eval)(src)(a); a.setSelection([]); a.frame(); }, [snap, src.toString()]);
+const box = (i) => app((i) => { const a = window.DraftOtter; const b = a.worldBox(a.model.nodes[i]); const c = b.getCenter(b.min.clone()); return { c: c.toArray().map((v) => +v.toFixed(3)), minz: +b.min.z.toFixed(3) }; }, i);
 const onGrid = (v, s) => Math.abs(v / s - Math.round(v / s)) < 1e-6;
 
 // ---------------------------------------------------------------- new parts land on grid multiples
@@ -64,7 +64,7 @@ check('shape dropped on a face sits on it, centered on a grid point', Math.abs(b
 // ---------------------------------------------------------------- Place on face (P)
 await reset(5, (a) => { a.addShape('box'); a.addShape('cylinder'); const [n, c] = a.model.nodes; n.params.w = 60; n.params.d = 60; n.pos = [0, 0, 10]; c.pos = [80, 0, 10]; a.commit(); });
 await wait(300);
-await app(() => { const a = window.LocalCAD; a.setSelection([a.model.nodes[1].id]); });
+await app(() => { const a = window.DraftOtter; a.setSelection([a.model.nodes[1].id]); });
 await page.keyboard.press('p');
 p0 = await screen(-6.6, 13.1, 20);
 await page.mouse.click(cv.x + p0.x, cv.y + p0.y);

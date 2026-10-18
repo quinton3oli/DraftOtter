@@ -14,7 +14,7 @@ await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath:
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -26,7 +26,7 @@ const modalBtn = (label) => app((label) => [...document.querySelectorAll('.modal
 
 // a base plate with a block mated on top (kept attached)
 await app(() => {
-	localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = []; a.model.doc.mates = []; a.commit();
+	localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = []; a.model.doc.mates = []; a.commit();
 	a.addShape('box'); a.addShape('box');
 	const [base, top] = a.model.nodes; base.params.w = 40; base.params.d = 40; base.params.h = 10; base.pos = [0, 0, 5]; top.params.w = 10; top.params.d = 10; top.params.h = 10; top.pos = [60, 0, 5]; base.name = 'Base'; top.name = 'Block';
 	a.commit();
@@ -35,48 +35,48 @@ await app(() => {
 	a.applyMate(); a.showMateBar(); a.endMate();
 });
 await wait(200);
-let r = await app(() => ({ mates: window.LocalCAD.model.doc.mates.length, pos: window.LocalCAD.model.nodes[1].pos }));
+let r = await app(() => ({ mates: window.DraftOtter.model.doc.mates.length, pos: window.DraftOtter.model.nodes[1].pos }));
 check('mating with "keep attached" stores an attachment', r.mates === 1 && near(r.pos[2], 15) && near(r.pos[0], 0), JSON.stringify(r));
 // move the base: the block follows
-await app(() => { const a = window.LocalCAD; const b = a.model.nodes[0]; b.pos = [25, -10, 5]; b.rot = [0, 0, 90]; a.commit(); });
-r = await app(() => window.LocalCAD.model.nodes[1].pos.map((v) => +v.toFixed(3)));
+await app(() => { const a = window.DraftOtter; const b = a.model.nodes[0]; b.pos = [25, -10, 5]; b.rot = [0, 0, 90]; a.commit(); });
+r = await app(() => window.DraftOtter.model.nodes[1].pos.map((v) => +v.toFixed(3)));
 check('moving the base carries the attached block with it', near(r[0], 25) && near(r[1], -10) && near(r[2], 15), JSON.stringify(r));
 // move the block itself: it is re-attached where it now is
-await app(() => { const a = window.LocalCAD; const t = a.model.nodes[1]; t.pos = [t.pos[0] + 8, t.pos[1], t.pos[2]]; a.commit(); });
-await app(() => { const a = window.LocalCAD; const b = a.model.nodes[0]; b.pos = [b.pos[0], b.pos[1] + 5, b.pos[2]]; a.commit(); });
-r = await app(() => window.LocalCAD.model.nodes[1].pos.map((v) => +v.toFixed(3)));
+await app(() => { const a = window.DraftOtter; const t = a.model.nodes[1]; t.pos = [t.pos[0] + 8, t.pos[1], t.pos[2]]; a.commit(); });
+await app(() => { const a = window.DraftOtter; const b = a.model.nodes[0]; b.pos = [b.pos[0], b.pos[1] + 5, b.pos[2]]; a.commit(); });
+r = await app(() => window.DraftOtter.model.nodes[1].pos.map((v) => +v.toFixed(3)));
 check('moving the attached part re-attaches it where you put it', near(r[0], 33) && near(r[1], -5) && near(r[2], 15), JSON.stringify(r));
-const und = await app(() => { const a = window.LocalCAD; a.undo(); return a.model.nodes[1].pos.map((v) => +v.toFixed(3)); });
+const und = await app(() => { const a = window.DraftOtter; a.undo(); return a.model.nodes[1].pos.map((v) => +v.toFixed(3)); });
 check('attachments follow undo', near(und[0], 33) && near(und[1], -10), JSON.stringify(und));
 // detach in the panel
-await app(() => window.LocalCAD.showJointsPanel());
+await app(() => window.DraftOtter.showJointsPanel());
 const panel = await app(() => document.querySelector('#joints-panel').textContent);
 check('panel lists the attachment', /Block → Base/.test(panel), panel.slice(0, 120));
 await app(() => [...document.querySelectorAll('#joints-panel .btn')].find((b) => b.textContent === 'Detach').click());
-await app(() => { const a = window.LocalCAD; const b = a.model.nodes[0]; b.pos = [0, 0, 5]; a.commit(); });
-r = await app(() => ({ mates: window.LocalCAD.model.doc.mates.length, pos: window.LocalCAD.model.nodes[1].pos.map((v) => +v.toFixed(3)) }));
+await app(() => { const a = window.DraftOtter; const b = a.model.nodes[0]; b.pos = [0, 0, 5]; a.commit(); });
+r = await app(() => ({ mates: window.DraftOtter.model.doc.mates.length, pos: window.DraftOtter.model.nodes[1].pos.map((v) => +v.toFixed(3)) }));
 check('after Detach the block stays put', r.mates === 0 && near(r.pos[0], 33), JSON.stringify(r));
 await app(() => { document.querySelector('#joints-panel').style.display = 'none'; });
 
 // ---------------------------------------------------------------- exploded view
 await app(() => {
-	const a = window.LocalCAD; a.model.doc.nodes = []; a.commit();
+	const a = window.DraftOtter; a.model.doc.nodes = []; a.commit();
 	for (let i = 0; i < 3; i++) { a.addShape('cylinder'); }
 	a.addShape('box');
 	const [c1, c2, c3, b] = a.model.nodes; c1.pos = [0, 0, 10]; c2.pos = [0, 0, 10]; c3.pos = [12, 0, 10]; b.pos = [0, 0, 10]; a.commit(); a.setSelection([]); a.frame();
 });
-const pos0 = await app(() => window.LocalCAD.model.nodes.map((n) => n.pos.slice()));
-await app(() => window.LocalCAD.toggleExplode(true));
+const pos0 = await app(() => window.DraftOtter.model.nodes.map((n) => n.pos.slice()));
+await app(() => window.DraftOtter.toggleExplode(true));
 await wait(300);
-const ex = await app(() => { const a = window.LocalCAD; return { moved: a.model.nodes.some((n) => { const o = a.vp.objs.get(n.id); return o && Math.hypot(o.position.x - n.pos[0], o.position.y - n.pos[1], o.position.z - n.pos[2]) > 1; }), data: a.model.nodes.map((n) => n.pos.slice()) }; });
+const ex = await app(() => { const a = window.DraftOtter; return { moved: a.model.nodes.some((n) => { const o = a.vp.objs.get(n.id); return o && Math.hypot(o.position.x - n.pos[0], o.position.y - n.pos[1], o.position.z - n.pos[2]) > 1; }), data: a.model.nodes.map((n) => n.pos.slice()) }; });
 check('exploded view spreads the parts on screen', ex.moved);
 check('…without changing the design', JSON.stringify(ex.data) === JSON.stringify(pos0));
 await shot('280-exploded');
-await app(() => window.LocalCAD.toggleExplode(false));
-check('Done puts them back', await app(() => window.LocalCAD.model.nodes.every((n) => { const o = window.LocalCAD.vp.objs.get(n.id); return Math.abs(o.position.x - n.pos[0]) < 1e-6; })));
+await app(() => window.DraftOtter.toggleExplode(false));
+check('Done puts them back', await app(() => window.DraftOtter.model.nodes.every((n) => { const o = window.DraftOtter.vp.objs.get(n.id); return Math.abs(o.position.x - n.pos[0]) < 1e-6; })));
 
 // ---------------------------------------------------------------- BOM
-await app(() => window.LocalCAD.bomDialog());
+await app(() => window.DraftOtter.bomDialog());
 await wait(200);
 const rows = await app(() => [...document.querySelectorAll('.modal table.bom tbody tr')].map((tr) => [...tr.children].map((td) => td.textContent.trim()).join('|')));
 check('BOM groups identical parts (3 cylinders, 1 box)', rows.length === 2 && rows.some((t) => /Cylinder\|3\|/.test(t)) && rows.some((t) => /Box\|1\|20 × 20 × 20/.test(t)), rows.join(' / '));

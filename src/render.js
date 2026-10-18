@@ -54,7 +54,7 @@ export const RenderMixin = {
 		const solids = this.model.nodes.filter((n) => n.visible && !n.hole);
 		if (!solids.length) { toast('Nothing to render — add some solid shapes first', 'warn'); return; }
 		let prefs = { material: 'matte', backdrop: 'light', quality: 'good', size: 'view' };
-		try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem('localcad-render') || '{}') }; } catch (e) { /* ignore */ }
+		try { prefs = { ...prefs, ...JSON.parse(localStorage.getItem('draftotter-render') || '{}') }; } catch (e) { /* ignore */ }
 		Object.assign(prefs, opts.prefs || {});
 		const sel = (id, table, value) => el('select', { id }, ...Object.entries(table).map(([k, v]) => el('option', { value: k, selected: k === value }, v.label)));
 		const matSel = sel('rn-mat', MATERIALS, prefs.material), bgSel = sel('rn-bg', BACKDROPS, prefs.backdrop), qSel = sel('rn-q', QUALITY, prefs.quality), sizeSel = sel('rn-size', SIZES, prefs.size);
@@ -85,7 +85,7 @@ export const RenderMixin = {
 		const settings = () => ({ material: matSel.value, backdrop: bgSel.value, quality: qSel.value, size: sizeSel.value });
 		const changed = () => {
 			const p = settings();
-			try { localStorage.setItem('localcad-render', JSON.stringify(p)); } catch (e) { /* ignore */ }
+			try { localStorage.setItem('draftotter-render', JSON.stringify(p)); } catch (e) { /* ignore */ }
 			this.applyRenderSettings(st, p, opts);
 		};
 		for (const s of [matSel, bgSel, qSel, sizeSel]) s.addEventListener('change', changed);

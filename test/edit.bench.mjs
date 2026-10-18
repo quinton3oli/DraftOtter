@@ -6,13 +6,13 @@ import { pathToFileURL } from 'node:url';
 const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', protocolTimeout: 900000, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-precise-memory-info'], defaultViewport: { width: 1500, height: 900 } });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('pageerror', e.message));
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 
 const built = await app(async () => {
 	localStorage.clear();
-	const a = window.LocalCAD;
+	const a = window.DraftOtter;
 	const settle = async () => { for (let i = 0; i < 100 && a.bgBuild; i++) await a.bgBuild; };
 	a.model.doc.nodes = [];
 	a.model.doc.vars = [{ name: 'wall', expr: '2' }, { name: 'hole', expr: '3.2' }];
@@ -51,7 +51,7 @@ const built = await app(async () => {
 console.log('design:', JSON.stringify(built));
 
 const times = await app(async () => {
-	const a = window.LocalCAD;
+	const a = window.DraftOtter;
 	const settle = async () => { for (let i = 0; i < 100 && a.bgBuild; i++) await a.bgBuild; };
 	const med = async (fn, n = 7) => { const t = []; for (let i = 0; i < n; i++) { const t0 = performance.now(); await fn(i); t.push(performance.now() - t0); } t.sort((x, y) => x - y); return Math.round(t[Math.floor(n / 2)] * 10) / 10; };
 	const loose = a.model.nodes[40]; // a box
@@ -79,9 +79,9 @@ const times = await app(async () => {
 });
 for (const [k, v] of Object.entries(times)) console.log(k.padEnd(16), v, k === 'heapMB' ? 'MB' : 'ms');
 // dragging a part with the mouse: time per pointer move (until the next frame is drawn)
-await app(async () => { const a = window.LocalCAD; await a.switchTab(0); a.setSelection([a.model.nodes[40].id]); a.vp.setView('top'); a.frame(); });
+await app(async () => { const a = window.DraftOtter; await a.switchTab(0); a.setSelection([a.model.nodes[40].id]); a.vp.setView('top'); a.frame(); });
 await new Promise((r) => setTimeout(r, 800));
-const at = await app(() => { const a = window.LocalCAD, vp = a.vp; vp.render(); const n = a.model.nodes[40]; const p = vp.project(new (vp.camera.position.constructor)(...n.pos)); const r = vp.canvas.getBoundingClientRect(); return { x: r.left + p.x, y: r.top + p.y }; });
+const at = await app(() => { const a = window.DraftOtter, vp = a.vp; vp.render(); const n = a.model.nodes[40]; const p = vp.project(new (vp.camera.position.constructor)(...n.pos)); const r = vp.canvas.getBoundingClientRect(); return { x: r.left + p.x, y: r.top + p.y }; });
 await page.mouse.move(at.x, at.y);
 await page.mouse.down();
 const t0 = Date.now();

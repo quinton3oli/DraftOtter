@@ -1,5 +1,5 @@
-// Claude connection end to end: the MCP helper (claude/localcad-mcp.mjs) spoken to over stdio like Claude does,
-// LocalCAD in a browser connected to it, and every tool run against the real app.
+// Claude connection end to end: the MCP helper (claude/draftotter-mcp.mjs) spoken to over stdio like Claude does,
+// DraftOtter in a browser connected to it, and every tool run against the real app.
 import puppeteer from 'puppeteer-core';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +16,7 @@ const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- the helper, as an MCP client sees it
-const helper = spawn(process.execPath, ['claude/localcad-mcp.mjs'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, LOCALCAD_PORT: String(PORT), LOCALCAD_EXPORT_DIR: OUT } });
+const helper = spawn(process.execPath, ['claude/draftotter-mcp.mjs'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, DRAFTOTTER_PORT: String(PORT), DRAFTOTTER_EXPORT_DIR: OUT } });
 let helperLog = '';
 helper.stderr.on('data', (d) => { helperLog += d; });
 const replies = new Map();
@@ -40,7 +40,7 @@ const call = async (name, args = {}) => {
 };
 
 const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
-check('initialize: protocol version and server info', init.result.protocolVersion === '2025-06-18' && init.result.serverInfo.name === 'localcad' && /millimeters/.test(init.result.instructions), JSON.stringify(init.result.serverInfo));
+check('initialize: protocol version and server info', init.result.protocolVersion === '2025-06-18' && init.result.serverInfo.name === 'draftotter' && /millimeters/.test(init.result.instructions), JSON.stringify(init.result.serverInfo));
 helper.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
 const list = await rpc('tools/list', {});
 const names = list.result.tools.map((t) => t.name);
@@ -49,7 +49,7 @@ const manifest = JSON.parse(readFileSync('claude/manifest.json', 'utf8'));
 check('the Claude Desktop extension lists the same tools', manifest.tools.map((t) => t.name).join() === names.join() && manifest.version === JSON.parse(readFileSync('package.json', 'utf8')).version, manifest.tools.map((t) => t.name).join());
 check('unknown methods get an error', (await rpc('nope/nothing', {})).error.code === -32601);
 let r = await call('get_design');
-check('without LocalCAD open, tools say how to connect', r.error && /Connect Claude/.test(r.text), r.text);
+check('without DraftOtter open, tools say how to connect', r.error && /Connect Claude/.test(r.text), r.text);
 
 // pages from other websites are turned away
 const status = (origin) => new Promise((res) => {
@@ -62,27 +62,27 @@ const status = (origin) => new Promise((res) => {
 check('a website can\'t connect (origin check)', (await status('https://evil.example')) !== 101);
 check('a page opened from a file can', (await status('null')) === 101);
 
-// ---------------------------------------------------------------- LocalCAD, connected
+// ---------------------------------------------------------------- DraftOtter, connected
 const browser = await puppeteer.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: 'new', protocolTimeout: 240000, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'], defaultViewport: { width: 1400, height: 900 } });
 const errors = [];
 const open = async () => {
 	const page = await browser.newPage();
 	page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 	page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-	await page.goto(pathToFileURL('LocalCAD.html').href);
+	await page.goto(pathToFileURL('DraftOtter.html').href);
 	await page.waitForFunction(() => document.body.classList.contains('ready'));
 	return page;
 };
 const page = await open();
 const app = (fn, ...a) => page.evaluate(fn, ...a);
-check('Claude is off by default (no badge, no connection)', await app(() => getComputedStyle(document.querySelector('#st-claude')).display === 'none' && !window.LocalCAD.claude.ws));
+check('Claude is off by default (no badge, no connection)', await app(() => getComputedStyle(document.querySelector('#st-claude')).display === 'none' && !window.DraftOtter.claude.ws));
 // turn it on through the dialog
-await app(() => { localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = []; a.model.doc.vars = []; a.commit(); a.claudeDialog(); });
+await app(() => { localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = []; a.model.doc.vars = []; a.commit(); a.claudeDialog(); });
 await app((port) => { const p = document.querySelector('#claude-port'); p.value = port; const c = document.querySelector('#claude-on'); c.checked = true; c.dispatchEvent(new Event('change')); }, PORT);
 await page.waitForFunction(() => document.querySelector('#st-claude').textContent === 'Claude connected', { timeout: 10000 }).catch(() => null);
 check('ticking "Allow Claude to connect" connects (badge, dialog status)', await app(() => document.querySelector('#st-claude').textContent === 'Claude connected' && document.querySelector('#claude-live').textContent === 'Claude connected'));
-check('the dialog shows the Claude Code command for this copy', await app(() => /claude mcp add localcad -- node ".*claude\\localcad-mcp\.mjs"/.test(document.querySelector('.claude-cmd code').textContent)));
-check('the setting is remembered', await app(() => JSON.parse(localStorage.getItem('localcad-claude')).on === true));
+check('the dialog shows the Claude Code command for this copy', await app(() => /claude mcp add draftotter -- node ".*claude\\draftotter-mcp\.mjs"/.test(document.querySelector('.claude-cmd code').textContent)));
+check('the setting is remembered', await app(() => JSON.parse(localStorage.getItem('draftotter-claude')).on === true));
 const closeModal = (p) => p.evaluate(() => [...document.querySelectorAll('.modal-back .btn')].find((b) => b.textContent.trim() === 'Close').click());
 await closeModal(page);
 
@@ -158,16 +158,16 @@ check('undo brings them back', !r.error && r.data.undone === 1 && r.data.objects
 r = await call('undo', { redo: true });
 check('…and redo removes them again', r.data.redone === 1 && r.data.objects.length === 4);
 r = await call('select', { ids: [ring.id] });
-check('select shows the user an object', await app(() => window.LocalCAD.sel.length === 1) && r.data.selection.length === 1);
+check('select shows the user an object', await app(() => window.DraftOtter.sel.length === 1) && r.data.selection.length === 1);
 
 // the picture, without moving the user's view
-const cam0 = await app(() => window.LocalCAD.vp.camera.position.toArray().join());
+const cam0 = await app(() => window.DraftOtter.vp.camera.position.toArray().join());
 r = await call('screenshot', { view: 'top', size: 600 });
 const img = r.content.find((c) => c.type === 'image');
 const jpg = img && Buffer.from(img.data, 'base64');
 check('screenshot returns a picture', !r.error && img && img.mimeType === 'image/jpeg' && jpg[0] === 0xff && jpg[1] === 0xd8 && jpg.length > 5000, img && jpg.length);
-const cam1 = await app(() => window.LocalCAD.vp.camera.position.toArray().join());
-check('…and leaves the user\'s view and selection alone', cam1.split(',').every((v, i) => Math.abs(v - cam0.split(',')[i]) < 1e-6) && await app(() => window.LocalCAD.vp.selection.length === 1), cam0 + ' → ' + cam1);
+const cam1 = await app(() => window.DraftOtter.vp.camera.position.toArray().join());
+check('…and leaves the user\'s view and selection alone', cam1.split(',').every((v, i) => Math.abs(v - cam0.split(',')[i]) < 1e-6) && await app(() => window.DraftOtter.vp.selection.length === 1), cam0 + ' → ' + cam1);
 r = await call('screenshot', { view: 'iso', ids: [grp.id] });
 if (img) { const fs = await import('node:fs'); fs.writeFileSync('test/shots/430-claude-screenshot.jpg', Buffer.from(r.content.find((c) => c.type === 'image').data, 'base64')); }
 
@@ -185,23 +185,23 @@ r = await call('get_stats');
 check('get_stats warns about loose holes etc. (none here)', Array.isArray(r.data.warnings) && !r.data.warnings.some((w) => /hole object/.test(w)), JSON.stringify(r.data.warnings));
 r = await call('update_object', { id: 'nope' });
 check('an unknown id is explained', r.error && /get_design/.test(r.text), r.text);
-check('each change was one undo step in LocalCAD', await app(() => window.LocalCAD.model.canUndo()));
+check('each change was one undo step in DraftOtter', await app(() => window.DraftOtter.model.canUndo()));
 
 // one window at a time
 const page2 = await open();
-await page2.evaluate(() => { const a = window.LocalCAD; localStorage.setItem('localcad-claude', JSON.stringify({ on: true, port: 47890 })); a.claude.prefs = { on: true, port: 47890 }; a.claudeConnect(); });
+await page2.evaluate(() => { const a = window.DraftOtter; localStorage.setItem('draftotter-claude', JSON.stringify({ on: true, port: 47890 })); a.claude.prefs = { on: true, port: 47890 }; a.claudeConnect(); });
 await page2.waitForFunction(() => /another window/.test(document.querySelector('#st-claude').textContent), { timeout: 8000 }).catch(() => null);
-check('a second LocalCAD window is told another one is connected', await page2.evaluate(() => /another window/.test(document.querySelector('#st-claude').textContent)));
+check('a second DraftOtter window is told another one is connected', await page2.evaluate(() => /another window/.test(document.querySelector('#st-claude').textContent)));
 r = await call('get_design');
 check('…and Claude keeps working with the first', !r.error && r.data.objects.length === 4);
 // turning it off disconnects; the other window can then connect
-await app(() => { const a = window.LocalCAD; a.claudeDialog(); const c = document.querySelector('#claude-on'); c.checked = false; c.dispatchEvent(new Event('change')); });
+await app(() => { const a = window.DraftOtter; a.claudeDialog(); const c = document.querySelector('#claude-on'); c.checked = false; c.dispatchEvent(new Event('change')); });
 await closeModal(page);
 await wait(300);
-check('turning it off disconnects and hides the badge', await app(() => !window.LocalCAD.claude.ws && getComputedStyle(document.querySelector('#st-claude')).display === 'none'));
+check('turning it off disconnects and hides the badge', await app(() => !window.DraftOtter.claude.ws && getComputedStyle(document.querySelector('#st-claude')).display === 'none'));
 await page2.waitForFunction(() => document.querySelector('#st-claude').textContent === 'Claude connected', { timeout: 15000 }).catch(() => null);
 check('…and the other window takes over', await page2.evaluate(() => document.querySelector('#st-claude').textContent === 'Claude connected'));
-await page2.evaluate(() => { const a = window.LocalCAD; a.model.doc.nodes = []; a.commit(); });
+await page2.evaluate(() => { const a = window.DraftOtter; a.model.doc.nodes = []; a.commit(); });
 r = await call('get_design');
 check('…with its own design', !r.error && r.data.objects.length === 0, r.data && r.data.objects && r.data.objects.length);
 

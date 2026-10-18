@@ -28,7 +28,7 @@ export function stlBinary(geom) {
 	return buf;
 }
 
-export function stlAscii(geom, name = 'localcad') {
+export function stlAscii(geom, name = 'draftotter') {
 	const p = geom.attributes.position.array;
 	const out = [`solid ${name}`];
 	const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();

@@ -9,22 +9,22 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
 let fails = 0;
 const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', name, info); };
 const cv = await (await page.$('#viewport canvas')).boundingBox();
-const scr = (p) => app((p) => { const vp = window.LocalCAD.vp; vp.render(); return vp.project(vp.camera.position.clone().set(...p)); }, p);
+const scr = (p) => app((p) => { const vp = window.DraftOtter.vp; vp.render(); return vp.project(vp.camera.position.clone().set(...p)); }, p);
 const editorOpen = () => app(() => !!document.querySelector('.sk-actions'));
 const editorField = (label) => app((label) => { const f = [...document.querySelectorAll('.sk-field')].find((x) => x.textContent.includes(label) && x.style.display !== 'none'); return f ? f.querySelector('input').value : null; }, label);
 const editorBtn = (label) => app((label) => [...document.querySelectorAll('.sk-actions button')].find((b) => b.textContent.trim() === label).click(), label);
-const info = () => app(() => { const a = window.LocalCAD, g = a.model.nodes[0], p = g.children.find((c) => c.type === 'sketch'); const b = a.worldBox(g); return { vol: +a.engine.stats([g]).volume.toFixed(2), top: +b.max.z.toFixed(4), h: p.params.height, z: p.pos[2] }; });
+const info = () => app(() => { const a = window.DraftOtter, g = a.model.nodes[0], p = g.children.find((c) => c.type === 'sketch'); const b = a.worldBox(g); return { vol: +a.engine.stats([g]).volume.toFixed(2), top: +b.max.z.toFixed(4), h: p.params.height, z: p.pos[2] }; });
 
 // a 40 × 30 × 10 block with a 10 × 10 pocket, 3 deep, sketched on its top face (as "Sketch on face" makes it)
 await app(() => {
-	localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = [];
+	localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = [];
 	a.addShape('box'); a.addShape('box');
 	const [b, p] = a.model.nodes; b.params.w = 40; b.params.d = 30; b.params.h = 10; b.pos = [0, 0, 5];
 	p.type = 'sketch'; p.name = 'Pocket'; p.hole = true;
@@ -50,7 +50,7 @@ await editorBtn('Apply');
 await wait(400);
 r = await info();
 check('editing the depth: the pocket gets deeper and its top stays on the face', Math.abs(r.vol - (12000 - 500)) < 0.01 && r.h === 5 && Math.abs(r.z - 0) < 1e-9 && r.top === 10 /* moved down 2 mm inside the group */, JSON.stringify(r));
-check('one undo takes the edit back', await app(() => { const a = window.LocalCAD; a.undo(); const v = +a.engine.stats([a.model.nodes[0]]).volume.toFixed(2); a.redo(); return v; }) === 11700);
+check('one undo takes the edit back', await app(() => { const a = window.DraftOtter; a.undo(); const v = +a.engine.stats([a.model.nodes[0]]).volume.toFixed(2); a.redo(); return v; }) === 11700);
 
 // right-click over the pocket: "Edit sketch “Pocket”…"
 await page.mouse.click(cv.x + s.x, cv.y + s.y, { button: 'right' });
@@ -61,7 +61,7 @@ await page.keyboard.press('Escape');
 await app(() => document.querySelectorAll('.menu').forEach((m) => m.remove()));
 
 // Properties of the group lists its sketches
-await app(() => { const a = window.LocalCAD; a.setSelection([a.model.nodes[0].id]); });
+await app(() => { const a = window.DraftOtter; a.setSelection([a.model.nodes[0].id]); });
 await wait(200);
 const btns = await app(() => [...document.querySelectorAll('#props .sec')].filter((sec) => /Sketch/.test(sec.querySelector('.sec-title').textContent)).flatMap((sec) => [...sec.querySelectorAll('button')].map((b) => b.textContent)));
 check('the group’s Properties have a button for its sketch', btns.includes('✎ Pocket'), JSON.stringify(btns));
@@ -73,7 +73,7 @@ await wait(200);
 check('Cancel leaves the pocket as it was', (await info()).h === 5 && !(await editorOpen()));
 
 // double-clicking a plain part (no sketch) does not open the sketch editor
-await app(() => window.LocalCAD.setSelection([]));
+await app(() => window.DraftOtter.setSelection([]));
 const side = await scr([15, -15, 5]);
 await page.mouse.click(cv.x + side.x, cv.y + side.y, { count: 2 });
 await wait(300);

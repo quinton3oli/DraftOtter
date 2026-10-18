@@ -4,14 +4,14 @@
 import { toast, el } from './util.js';
 
 const served = () => location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-const PROMPT_KEY = 'localcad-install-prompt';
+const PROMPT_KEY = 'draftotter-install-prompt';
 const ASK_AGAIN_DAYS = 14;
 const PROMPT_DELAY = 1500; // ms after the app is ready: long enough to see the app first
 
 // Chrome and Edge announce "installable" early, often before the app has finished loading: catch it from the start.
 let earlyPrompt = null;
 if (typeof window !== 'undefined') {
-	window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); earlyPrompt = e; window.dispatchEvent(new Event('localcad-installable')); });
+	window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); earlyPrompt = e; window.dispatchEvent(new Event('draftotter-installable')); });
 }
 
 /** Running as the installed app (its own window) rather than in a browser tab. */
@@ -42,7 +42,7 @@ export const PwaMixin = {
 		);
 		const installable = () => { this.installPrompt = earlyPrompt; this.renderInstallButton(); this.scheduleInstallCard(); };
 		if (earlyPrompt) installable();
-		window.addEventListener('localcad-installable', installable);
+		window.addEventListener('draftotter-installable', installable);
 		window.addEventListener('appinstalled', () => {
 			this.installPrompt = earlyPrompt = null;
 			this.closeInstallCard();
@@ -52,7 +52,7 @@ export const PwaMixin = {
 		});
 		if (!this.installPrompt && safariSteps()) this.scheduleInstallCard();
 		this.registerServiceWorker();
-		// design files opened with the installed app (double-click a .lcad.json, or Open with → LocalCAD)
+		// design files opened with the installed app (double-click a .lcad.json, or Open with → DraftOtter)
 		if ('launchQueue' in window) {
 			window.launchQueue.setConsumer(async (params) => {
 				const h = params.files && params.files[0];

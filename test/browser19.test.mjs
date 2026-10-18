@@ -8,7 +8,7 @@ const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
-await page.goto(pathToFileURL('LocalCAD.html').href);
+await page.goto(pathToFileURL('DraftOtter.html').href);
 await page.waitForFunction(() => document.body.classList.contains('ready'));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const app = (fn, ...a) => page.evaluate(fn, ...a);
@@ -18,20 +18,20 @@ const check = (name, ok, info = '') => { if (!ok) fails++; console.log(ok ? 'ok 
 const cv = await (await page.$('#viewport canvas')).boundingBox();
 
 const setup = async () => {
-	await app(() => { localStorage.clear(); const a = window.LocalCAD; a.model.doc.nodes = []; a.model.settings.rotSnap = 15; a.commit(); a.addShape('box'); a.setSelection([a.model.nodes[0].id]); a.setGizmo('rotate'); a.vp.setView('top'); a.frame(); });
+	await app(() => { localStorage.clear(); const a = window.DraftOtter; a.model.doc.nodes = []; a.model.settings.rotSnap = 15; a.commit(); a.addShape('box'); a.setSelection([a.model.nodes[0].id]); a.setGizmo('rotate'); a.vp.setView('top'); a.frame(); });
 	await wait(400);
 	// the view animates there: wait until the camera has stopped (slower on a busy machine)
-	await page.evaluate(() => new Promise((done) => { const cam = window.LocalCAD.vp.camera; let last = '', same = 0, n = 0; const tick = () => { const k = cam.position.toArray().join(); same = k === last ? same + 1 : 0; last = k; if (same >= 5 || ++n > 600) done(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })); // unchanged for 5 frames in a row
-	await app(() => window.LocalCAD.vp.render());
+	await page.evaluate(() => new Promise((done) => { const cam = window.DraftOtter.vp.camera; let last = '', same = 0, n = 0; const tick = () => { const k = cam.position.toArray().join(); same = k === last ? same + 1 : 0; last = k; if (same >= 5 || ++n > 600) done(); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })); // unchanged for 5 frames in a row
+	await app(() => window.DraftOtter.vp.render());
 	await wait(150);
 };
 // screen points on a circle of radius k·R around the Z ring's center, at the given angles (degrees)
 const arc = (k, degs) => app(([k, degs]) => {
-	const a = window.LocalCAD; a.vp.render(); a.vp.helpers.updateMatrixWorld(true);
+	const a = window.DraftOtter; a.vp.render(); a.vp.helpers.updateMatrixWorld(true);
 	const H = a.vp.handles, R = H.ringRadius, c = H.rotGroup.position;
 	return degs.map((d) => { const t = (d * Math.PI) / 180; return a.vp.project(c.clone().set(c.x + k * R * Math.cos(t), c.y + k * R * Math.sin(t), c.z)); });
 }, [k, degs]);
-const rotZ = () => app(() => window.LocalCAD.model.nodes[0].rot[2]);
+const rotZ = () => app(() => window.DraftOtter.model.nodes[0].rot[2]);
 
 // ---------------------------------------------------------------- on the ring: 15° steps
 await setup();
@@ -43,7 +43,7 @@ check('hovering a ring explains both step sizes', /15° steps/.test(hint) && /1�
 await page.mouse.down();
 for (const p of pts.slice(1)) await page.mouse.move(cv.x + p.x, cv.y + p.y, { steps: 4 });
 const label = await app(() => document.querySelector('.vp-label.angle').textContent);
-const coarseTicks = await app(() => { const t = window.LocalCAD.vp.handles.ticks; return t.visible ? t.geometry.attributes.position.count / 2 : 0; });
+const coarseTicks = await app(() => { const t = window.DraftOtter.vp.handles.ticks; return t.visible ? t.geometry.attributes.position.count / 2 : 0; });
 await page.mouse.up();
 await wait(300);
 let r = await rotZ();
@@ -58,7 +58,7 @@ pts = await arc(1.45, [5, 15, 25, 33, 37]);
 await page.mouse.move(cv.x + start[0].x, cv.y + start[0].y);
 await page.mouse.down();
 for (const p of pts) await page.mouse.move(cv.x + p.x, cv.y + p.y, { steps: 4 });
-const fine = await app(() => ({ inView: (() => { const b = document.querySelector('.vp-label.angle').getBoundingClientRect(), v = document.querySelector('#viewport').getBoundingClientRect(); return b.left >= v.left && b.right <= v.right && b.top >= v.top && b.bottom <= v.bottom; })(), label: document.querySelector('.vp-label.angle').textContent, ticks: window.LocalCAD.vp.handles.ticks.visible ? window.LocalCAD.vp.handles.ticks.geometry.attributes.position.count / 2 : 0 }));
+const fine = await app(() => ({ inView: (() => { const b = document.querySelector('.vp-label.angle').getBoundingClientRect(), v = document.querySelector('#viewport').getBoundingClientRect(); return b.left >= v.left && b.right <= v.right && b.top >= v.top && b.bottom <= v.bottom; })(), label: document.querySelector('.vp-label.angle').textContent, ticks: window.DraftOtter.vp.handles.ticks.visible ? window.DraftOtter.vp.handles.ticks.geometry.attributes.position.count / 2 : 0 }));
 await shot('130-rotate-fine');
 await page.mouse.up();
 await wait(300);
@@ -78,7 +78,7 @@ await page.keyboard.up('Shift');
 await wait(300);
 r = await rotZ();
 check('Shift-drag on the ring gives 1° steps (≈32°)', Number.isInteger(r) && Math.abs(Math.abs(r) - 32) <= 1, String(r));
-check('ticks hidden after the drag', !(await app(() => window.LocalCAD.vp.handles.ticks.visible)));
+check('ticks hidden after the drag', !(await app(() => window.DraftOtter.vp.handles.ticks.visible)));
 
 check('no page errors', errors.length === 0, errors.join(' | '));
 await browser.close();

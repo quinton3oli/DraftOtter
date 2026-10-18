@@ -5,8 +5,8 @@
 import { Model } from './model.js';
 import { toast, el, idbGet, idbSet } from './util.js';
 
-const SESSION_KEY = 'localcad-tabs-v1';
-const AUTOSAVE_KEY = 'localcad-autosave-v1';
+const SESSION_KEY = 'draftotter-tabs-v1';
+const AUTOSAVE_KEY = 'draftotter-autosave-v1';
 const FIRST = 't0'; // the first tab uses the original (single-design) storage keys, so older sessions open as tab 1
 const $ = (s) => document.querySelector(s);
 const newId = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -152,7 +152,7 @@ export const TabsMixin = {
 		try { localStorage.removeItem(this.tabKey(AUTOSAVE_KEY, t.id)); } catch (e) { /* none */ }
 		idbSet(this.tabKey(AUTOSAVE_KEY, t.id), undefined);
 		idbSet(this.tabKey('fileHandle', t.id), undefined);
-		idbSet(this.tabKey('localcad-undo-v1', t.id), undefined);
+		idbSet(this.tabKey('draftotter-undo-v1', t.id), undefined);
 		this.saveTabSession();
 		this.renderTabs();
 		return true;
