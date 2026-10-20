@@ -4,7 +4,7 @@
 
 A precise, offline CAD tool for designing 3D-printable parts. Everything is in one file: open **`DraftOtter.html`** (from the download package, or built from these sources with `npm run build`) in Chrome, Edge or Firefox (double-click works, no server or internet needed) and export STL.
 
-It is also a web app: **https://localcad-8158c.web.app**. Open it in Chrome or Edge and choose Install (or File → Install DraftOtter) to get it as an app that works offline. The installed app opens `.lcad.json` design files you double-click (Chrome and Edge). When a new version is deployed, it offers to reload. Designs stay on your device: the web app stores them in the browser like the file version does, separately from it.
+It is also a web app: start at **https://draftotter.web.app** and click Open DraftOtter. Open it in Chrome or Edge and choose Install (or File → Install DraftOtter) to get it as an app that works offline. The installed app opens `.lcad.json` design files you double-click (Chrome and Edge). When a new version is deployed, it offers to reload. Designs stay on your device: the web app stores them in the browser like the file version does, separately from it.
 
 ## Features
 
@@ -120,7 +120,7 @@ node test/startup.bench.mjs   # startup time (warm) of the web app and the singl
 node test/edit.bench.mjs      # everyday editing on a big design (edits, selection, autosave, frames, tabs, dragging)
 node test/fuzz.test.mjs [seed] [steps]   # random-use stress test (also part of npm test)
 npm run web        # the installable web app (PWA) into web/: index.html, manifest, icons, service worker, Claude downloads
-npm run deploy     # build web/ and publish it to Firebase Hosting (project localcad-8158c; needs `firebase login`)
+npm run deploy     # build web/ and publish it to Firebase Hosting (the project in .firebaserc; needs `firebase login`)
 npm run dist       # end-user zip: DraftOtter.html, readme, licenses, and the Claude extension (DraftOtter.mcpb)
 ```
 
