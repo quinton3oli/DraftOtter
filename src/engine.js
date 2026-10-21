@@ -246,6 +246,61 @@ export function symmetrize(acc, sym, temps = []) {
 	return MF.Manifold.union(pieces);
 }
 
+/**
+ * A push/pull prism is measured off 32-bit mesh data, so its corners sit up to a fraction of a micron (or, where the
+ * outline was rounded to whole microns, half a micron) beside the part's own corners. Joined or cut like that, they
+ * leave hairline ledges and sliver triangles along the face's edges. This moves each corner column of the prism so
+ * its foot lands exactly (in 64-bit, sideways) on the part's matching vertex on the face plane — at most a few microns — so
+ * the prism's sides continue the part's sides exactly. M is the feature's placement (its Z = the face normal).
+ * Returns the fitted prism, or null when nothing needed moving.
+ */
+export function fitToFace(prism, part, M) {
+	const n = new THREE.Vector3().setFromMatrixColumn(M, 2).normalize();
+	const d0 = n.dot(new THREE.Vector3().setFromMatrixPosition(M));
+	const TOL = 3e-3, PLANE = 2e-3, CELL = 0.01;
+	// the part's vertices on the face plane, exactly (warpBatch hands them over as 64-bit)
+	const onPlane = [];
+	const copy = part.warpBatch((v, count) => {
+		for (let i = 0; i < count * 3; i += 3) if (Math.abs(n.x * v[i] + n.y * v[i + 1] + n.z * v[i + 2] - d0) < PLANE) onPlane.push(v[i], v[i + 1], v[i + 2]);
+	});
+	copy.delete();
+	if (!onPlane.length) return null;
+	const grid = new Map(), cell = (x) => Math.floor(x / CELL);
+	for (let j = 0; j < onPlane.length; j += 3) {
+		const key = cell(onPlane[j]) + ',' + cell(onPlane[j + 1]) + ',' + cell(onPlane[j + 2]);
+		(grid.get(key) || grid.set(key, []).get(key)).push(j);
+	}
+	let moved = 0;
+	const out = prism.warpBatch((v, count) => {
+		for (let i = 0; i < count * 3; i += 3) {
+			// the corner's foot on the face plane
+			const t = n.x * v[i] + n.y * v[i + 1] + n.z * v[i + 2] - d0;
+			const bx = v[i] - n.x * t, by = v[i + 1] - n.y * t, bz = v[i + 2] - n.z * t;
+			let best = -1, bd = TOL * TOL;
+			const cx = cell(bx), cy = cell(by), cz = cell(bz);
+			for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+				const list = grid.get((cx + dx) + ',' + (cy + dy) + ',' + (cz + dz));
+				if (!list) continue;
+				for (const j of list) {
+					const ex = onPlane[j] - bx, ey = onPlane[j + 1] - by, ez = onPlane[j + 2] - bz, dd = ex * ex + ey * ey + ez * ez;
+					if (dd < bd) { bd = dd; best = j; }
+				}
+			}
+			if (best < 0 || bd === 0) continue;
+			// sideways only: along the normal the prism stays as built (a cut whose top sat exactly in the face's plane
+			// would leave a zero-thickness skin of the face behind)
+			let mx = onPlane[best] - bx, my = onPlane[best + 1] - by, mz = onPlane[best + 2] - bz;
+			const along = n.x * mx + n.y * my + n.z * mz;
+			mx -= n.x * along; my -= n.y * along; mz -= n.z * along;
+			if (mx === 0 && my === 0 && mz === 0) continue;
+			v[i] += mx; v[i + 1] += my; v[i + 2] += mz;
+			moved++;
+		}
+	});
+	if (!moved) { out.delete(); return null; }
+	return out;
+}
+
 function cleanMatrix(e) {
 	return Array.from(e, (v) => { const r = Math.round(v); return Math.abs(v - r) < 1e-9 ? r : v; });
 }
@@ -765,7 +820,10 @@ export class Engine {
 					f = this.refoundFeature(acc, k) || k;
 					if (k.type === 'facex') {
 						const m = place(f);
-						if (m) acc = keep(k.hole ? acc.subtract(m) : acc.add(m));
+						// pulls only: a cut whose sides exactly continue the part's outside faces would leave zero-thickness skins
+						const fit = m && !k.hole && fitToFace(m, acc, nodeMatrix(f));
+						if (fit) keep(fit);
+						if (m) acc = keep(k.hole ? acc.subtract(fit || m) : acc.add(fit || m));
 						continue;
 					}
 				}
