@@ -198,10 +198,11 @@ export function buildEdgeOp(p, ctx) {
 		let rings = ch.pts.map((E, i) => sectionRing(E, ch.n1[i], ch.n2[i], !!ch.convex, p.kind, radii[i], segs, eps));
 		if (!ch.closed && ch.convex) {
 			// cutters run slightly past both ends so the cut goes cleanly through the neighboring faces
-			// (fillers stop flush, otherwise they would leave tiny bumps on the end faces)
+			// (fillers stop flush, otherwise they would leave tiny bumps on the end faces) — except at an end marked
+			// stop, where the edge meets more of the part (a floor) that running on would dig into
 			const t0 = norm(sub(ch.pts[0], ch.pts[1])), t1 = norm(sub(ch.pts[n - 1], ch.pts[n - 2]));
-			const ext = Math.max(0.05, Math.max(r, r2) * 0.05);
-			rings = [rings[0].map((q) => add(q, mul(t0, ext))), ...rings, rings[n - 1].map((q) => add(q, mul(t1, ext)))];
+			const ext = Math.max(0.05, Math.max(r, r2) * 0.05), stop = ch.stop || [];
+			rings = [...(stop[0] ? [] : [rings[0].map((q) => add(q, mul(t0, ext)))]), ...rings, ...(stop[1] ? [] : [rings[n - 1].map((q) => add(q, mul(t1, ext)))])];
 		}
 		solids.push(sweepSolid(rings, !!ch.closed));
 	}

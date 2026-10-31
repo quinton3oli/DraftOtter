@@ -625,6 +625,6 @@ function objTransformLocal(obj) {
 	return {
 		pos: [round(obj.position.x), round(obj.position.y), round(obj.position.z)],
 		rot: [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)],
-		scale: [round(obj.scale.x, 5), round(obj.scale.y, 5), round(obj.scale.z, 5)],
+		scale: [round(obj.scale.x, 9), round(obj.scale.y, 9), round(obj.scale.z, 9)], // exact: a rounded scale leaves the size off
 	};
 }

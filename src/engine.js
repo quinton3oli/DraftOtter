@@ -8,7 +8,7 @@ import { fitClearance, fittedParams, fitAxes } from './fits.js';
 import { hashKey, getFit, putFit } from './fitcache.js';
 import { setMF, toManifold, rawOf, csgRaw, moveFace, offsetSurface, growRaw, hullPoints, setFastFit as setCoreFastFit } from './csgcore.js';
 import { TEXTURE_DEFAULTS, DEFORM_DEFAULTS } from './modifiers.js';
-import { faceRegion } from './pushpull.js';
+import { faceRegion, buildFaceExtrude } from './pushpull.js';
 import { snapTo, snapMeasured, snapAngle } from './rounding.js';
 import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
@@ -163,6 +163,7 @@ const hasMoves = (g) => {
 	for (const c of g.children || []) {
 		if (c.type === 'facemove' || c.type === 'faceoff') return true;
 		if (c.type === 'facex' && c.params && c.params.ref) return true; // finds its face again on the part built before it
+		if (c.type === 'edgeop') return true; // fitted onto the edges of the part built before it
 		if (c.hole) cut = true;
 		else if (cut && PULLS.has(c.type)) return true;
 	}
@@ -247,58 +248,244 @@ export function symmetrize(acc, sym, temps = []) {
 }
 
 /**
- * A push/pull prism is measured off 32-bit mesh data, so its corners sit up to a fraction of a micron (or, where the
- * outline was rounded to whole microns, half a micron) beside the part's own corners. Joined or cut like that, they
- * leave hairline ledges and sliver triangles along the face's edges. This moves each corner column of the prism so
- * its foot lands exactly (in 64-bit, sideways) on the part's matching vertex on the face plane — at most a few microns — so
- * the prism's sides continue the part's sides exactly. M is the feature's placement (its Z = the face normal).
- * Returns the fitted prism, or null when nothing needed moving.
+ * A flat push/pull built on the part's face exactly as it is now. The face is found again on the part as built so
+ * far (the triangle nearest the remembered point, facing the remembered way, and every connected triangle in the same
+ * plane), its boundary is read in 64-bit (warpBatch hands over the kernel's own vertex positions), and the prism is
+ * set onto exactly those points: every prism corner is a face corner moved straight out (or in) along the face
+ * normal. Nothing measured, stored or rounded can put the push/pull beside its face, so its sides continue the
+ * part's sides exactly — no hairline ledges or sliver triangles, also for outlines saved by older versions or made
+ * on a part that was scaled or edited since. Returns the prism (group frame) or null when the face is not found
+ * (the stored outline is used then).
  */
-export function fitToFace(prism, part, M) {
-	const n = new THREE.Vector3().setFromMatrixColumn(M, 2).normalize();
-	const d0 = n.dot(new THREE.Vector3().setFromMatrixPosition(M));
-	const TOL = 3e-3, PLANE = 2e-3, CELL = 0.01;
-	// the part's vertices on the face plane, exactly (warpBatch hands them over as 64-bit)
-	const onPlane = [];
-	const copy = part.warpBatch((v, count) => {
-		for (let i = 0; i < count * 3; i += 3) if (Math.abs(n.x * v[i] + n.y * v[i + 1] + n.z * v[i + 2] - d0) < PLANE) onPlane.push(v[i], v[i + 1], v[i + 2]);
-	});
+/**
+ * A solid's mesh with the kernel's own 64-bit vertex positions (warpBatch hands them over; getMesh is 32-bit), and per
+ * triangle its unit normal N, plane offset D and whether it has an area (ok). Null when the two disagree.
+ */
+function exactMesh(part) {
+	const mesh = part.getMesh();
+	const tv = mesh.triVerts;
+	let V = null;
+	const copy = part.warpBatch((v, count) => { V = Float64Array.from(v.subarray(0, count * 3)); });
 	copy.delete();
-	if (!onPlane.length) return null;
-	const grid = new Map(), cell = (x) => Math.floor(x / CELL);
-	for (let j = 0; j < onPlane.length; j += 3) {
-		const key = cell(onPlane[j]) + ',' + cell(onPlane[j + 1]) + ',' + cell(onPlane[j + 2]);
-		(grid.get(key) || grid.set(key, []).get(key)).push(j);
+	const nv = V.length / 3, nt = tv.length / 3;
+	if (!nt || mesh.vertProperties.length / mesh.numProp !== nv) return null;
+	const N = new Float64Array(nt * 3), D = new Float64Array(nt), ok = new Uint8Array(nt);
+	for (let t = 0; t < nt; t++) {
+		const a = tv[3 * t] * 3, b = tv[3 * t + 1] * 3, c = tv[3 * t + 2] * 3;
+		const ux = V[b] - V[a], uy = V[b + 1] - V[a + 1], uz = V[b + 2] - V[a + 2];
+		const wx = V[c] - V[a], wy = V[c + 1] - V[a + 1], wz = V[c + 2] - V[a + 2];
+		let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+		const l = Math.hypot(nx, ny, nz);
+		if (l < 1e-12) continue;
+		nx /= l; ny /= l; nz /= l;
+		N[3 * t] = nx; N[3 * t + 1] = ny; N[3 * t + 2] = nz;
+		D[t] = nx * V[a] + ny * V[a + 1] + nz * V[a + 2];
+		ok[t] = 1;
 	}
-	let moved = 0;
-	const out = prism.warpBatch((v, count) => {
-		for (let i = 0; i < count * 3; i += 3) {
-			// the corner's foot on the face plane
-			const t = n.x * v[i] + n.y * v[i + 1] + n.z * v[i + 2] - d0;
-			const bx = v[i] - n.x * t, by = v[i + 1] - n.y * t, bz = v[i + 2] - n.z * t;
-			let best = -1, bd = TOL * TOL;
-			const cx = cell(bx), cy = cell(by), cz = cell(bz);
-			for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
-				const list = grid.get((cx + dx) + ',' + (cy + dy) + ',' + (cz + dz));
-				if (!list) continue;
-				for (const j of list) {
-					const ex = onPlane[j] - bx, ey = onPlane[j + 1] - by, ez = onPlane[j + 2] - bz, dd = ex * ex + ey * ey + ez * ez;
-					if (dd < bd) { bd = dd; best = j; }
-				}
+	return { V, tv, N, D, ok, nv, nt };
+}
+
+export function exactFacePrism(part, feature) {
+	const p = feature.params, ref = p.ref;
+	if (!ref || p.draft) return null;
+	const em = exactMesh(part);
+	if (!em) return null;
+	const { V, tv, N, D, ok, nv, nt } = em;
+	// the face's first triangle: nearest the remembered point among those facing the remembered way
+	const P = new THREE.Vector3(...ref.p), RN = new THREE.Vector3(...ref.n).normalize();
+	const tri = new THREE.Triangle(), A = new THREE.Vector3(), B = new THREE.Vector3(), Cc = new THREE.Vector3(), Q = new THREE.Vector3();
+	let seed = -1, best = Infinity;
+	for (let t = 0; t < nt; t++) {
+		if (!ok[t] || N[3 * t] * RN.x + N[3 * t + 1] * RN.y + N[3 * t + 2] * RN.z < 1 - 1e-6) continue;
+		A.fromArray(V, tv[3 * t] * 3); B.fromArray(V, tv[3 * t + 1] * 3); Cc.fromArray(V, tv[3 * t + 2] * 3);
+		const d = tri.set(A, B, Cc).closestPointToPoint(P, Q).distanceTo(P);
+		if (d < best) { best = d; seed = t; }
+	}
+	if (seed < 0) return null;
+	// the whole flat face: connected triangles in the same plane
+	const edges = new Map();
+	for (let t = 0; t < nt; t++) {
+		if (!ok[t]) continue;
+		for (let k = 0; k < 3; k++) {
+			const i = tv[3 * t + k], j = tv[3 * t + ((k + 1) % 3)], key = i < j ? i * nv + j : j * nv + i;
+			const l = edges.get(key);
+			if (l) l.push(t); else edges.set(key, [t]);
+		}
+	}
+	const n0x = N[3 * seed], n0y = N[3 * seed + 1], n0z = N[3 * seed + 2], d0 = D[seed];
+	const scale = Math.max(1, Math.abs(d0));
+	const inFace = new Uint8Array(nt);
+	inFace[seed] = 1;
+	const stack = [seed];
+	while (stack.length) {
+		const t = stack.pop();
+		for (let k = 0; k < 3; k++) {
+			const i = tv[3 * t + k], j = tv[3 * t + ((k + 1) % 3)];
+			for (const u of edges.get(i < j ? i * nv + j : j * nv + i)) {
+				if (inFace[u] || !ok[u]) continue;
+				if (N[3 * u] * n0x + N[3 * u + 1] * n0y + N[3 * u + 2] * n0z < 1 - 1e-9 || Math.abs(D[u] - d0) > 1e-7 * scale) continue;
+				inFace[u] = 1;
+				stack.push(u);
 			}
-			if (best < 0 || bd === 0) continue;
-			// sideways only: along the normal the prism stays as built (a cut whose top sat exactly in the face's plane
-			// would leave a zero-thickness skin of the face behind)
-			let mx = onPlane[best] - bx, my = onPlane[best + 1] - by, mz = onPlane[best + 2] - bz;
-			const along = n.x * mx + n.y * my + n.z * mz;
-			mx -= n.x * along; my -= n.y * along; mz -= n.z * along;
-			if (mx === 0 && my === 0 && mz === 0) continue;
-			v[i] += mx; v[i + 1] += my; v[i + 2] += mz;
-			moved++;
+		}
+	}
+	if (best > 1e-3 && ref.area > 0) {
+		let area = 0;
+		for (let t = 0; t < nt; t++) if (inFace[t]) { A.fromArray(V, tv[3 * t] * 3); B.fromArray(V, tv[3 * t + 1] * 3); Cc.fromArray(V, tv[3 * t + 2] * 3); area += tri.set(A, B, Cc).getArea(); }
+		if (area > 3 * ref.area || area < ref.area / 3) return null; // not the remembered face (that one is gone)
+	}
+	// its boundary: directed edges whose reverse is not in the face, chained into loops of vertex indices
+	const dir = new Set();
+	for (let t = 0; t < nt; t++) if (inFace[t]) for (let k = 0; k < 3; k++) dir.add(tv[3 * t + k] * nv + tv[3 * t + ((k + 1) % 3)]);
+	const next = new Map();
+	for (const e of dir) {
+		const a = Math.floor(e / nv), b = e % nv;
+		if (dir.has(b * nv + a)) continue;
+		(next.get(a) || next.set(a, []).get(a)).push(b);
+	}
+	const loops = [];
+	for (const [start] of next) {
+		while (next.get(start) && next.get(start).length) {
+			const lp = [start];
+			let cur = next.get(start).pop();
+			for (let guard = 0; cur !== start && guard < 100000; guard++) {
+				lp.push(cur);
+				const outs = next.get(cur);
+				if (!outs || !outs.length) { lp.length = 0; break; }
+				cur = outs.pop();
+			}
+			if (lp.length >= 3) loops.push(lp);
+		}
+	}
+	if (!loops.length) return null;
+	// a frame on the face: origin at a corner, Z the face normal
+	const n = new THREE.Vector3(n0x, n0y, n0z);
+	const O = new THREE.Vector3().fromArray(V, loops[0][0] * 3);
+	const ax = Math.abs(n.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+	const X = ax.addScaledVector(n, -ax.dot(n)).normalize(), Y = new THREE.Vector3().crossVectors(n, X);
+	const P2 = (i) => { const x = V[3 * i] - O.x, y = V[3 * i + 1] - O.y, z = V[3 * i + 2] - O.z; return [x * X.x + y * X.y + z * X.z, x * Y.x + y * Y.y + z * Y.z]; };
+	const area = (lp) => { let s = 0; for (let i = 0; i < lp.length; i++) { const [x0, y0] = P2(lp[i]), [x1, y1] = P2(lp[(i + 1) % lp.length]); s += x0 * y1 - x1 * y0; } return s / 2; };
+	loops.sort((a, b) => Math.abs(area(b)) - Math.abs(area(a)));
+	const geo = buildFaceExtrude({ loops: loops.map((lp) => lp.map(P2)), depth: p.depth });
+	if (!geo || !geo.attributes.position || !geo.attributes.position.count) return null;
+	// the two layers of the prism along the normal (see buildFaceExtrude): a pull starts a little inside the face
+	const d = p.depth || 0, layers = d < 0 ? [d, 0] : [-0.02, d];
+	const M = new THREE.Matrix4().makeBasis(X, Y, n).setPosition(O);
+	const local = toManifold(geo);
+	geo.dispose();
+	if (!local) return null;
+	const placed = local.transform(Array.from(M.elements));
+	local.delete();
+	// every prism corner onto its face corner, exactly, at its layer's distance along the normal
+	const grid = new Map(), CELL = 0.01, cell = (v) => Math.floor(v / CELL);
+	const pts = [...new Set(loops.flat())];
+	for (const i of pts) { const [x, y] = P2(i); const key = cell(x) + ',' + cell(y); (grid.get(key) || grid.set(key, []).get(key)).push([x, y, i]); }
+	let missed = 0;
+	const out = placed.warpBatch((v, count) => {
+		for (let k = 0; k < count * 3; k += 3) {
+			const rx = v[k] - O.x, ry = v[k + 1] - O.y, rz = v[k + 2] - O.z;
+			const x = rx * X.x + ry * X.y + rz * X.z, y = rx * Y.x + ry * Y.y + rz * Y.z, h = rx * n.x + ry * n.y + rz * n.z;
+			let hit = null, bd = 1e-6;
+			for (let gx = -1; gx <= 1; gx++) for (let gy = -1; gy <= 1; gy++) for (const c of grid.get((cell(x) + gx) + ',' + (cell(y) + gy)) || []) { const dd = (c[0] - x) ** 2 + (c[1] - y) ** 2; if (dd < bd) { bd = dd; hit = c; } }
+			if (!hit) { missed++; continue; }
+			const layer = Math.abs(h - layers[0]) < Math.abs(h - layers[1]) ? layers[0] : layers[1];
+			const i = hit[2] * 3;
+			v[k] = V[i] + n.x * layer; v[k + 1] = V[i + 1] + n.y * layer; v[k + 2] = V[i + 2] + n.z * layer;
 		}
 	});
-	if (!moved) { out.delete(); return null; }
+	placed.delete();
+	if (missed) { out.delete(); return null; }
 	return out;
+}
+
+/**
+ * Fillets and chamfers keep their edges as points and face normals taken off the part when they were made. When the
+ * part changes after that (a hole moved 0.05 mm, a wall made thicker) the stored edge sits beside the real one and the
+ * rounding leaves a ledge beside it. Built in order, a fillet is fitted onto the part as it is now: every edge point is
+ * moved onto the two faces it joins (the nearest faces facing the stored ways, if within reach), and an outside
+ * fillet's cutter runs on past an end of its edge only where that end is open — past an end that meets more of the
+ * part (a vertical edge standing on a floor) it would dig a groove into that floor. Returns the fitted params, or null
+ * when the stored ones are already exact.
+ */
+export function fitEdgeChains(part, node) {
+	const p = node.params;
+	if (!p || !Array.isArray(p.chains) || !p.chains.length) return null;
+	const em = exactMesh(part);
+	if (!em) return null;
+	const { V, tv, N, D, ok, nt } = em;
+	const M = nodeMatrix(node), Mi = M.clone().invert(), nmW = new THREE.Matrix3().getNormalMatrix(M), nmL = new THREE.Matrix3().getNormalMatrix(Mi);
+	const r = Math.max(0.01, p.size || 1), rMax = Math.max(r, p.size2 > 0 ? p.size2 : r);
+	const reach = Math.min(0.5, rMax * 0.5);
+	const tri = new THREE.Triangle(), A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), Q = new THREE.Vector3();
+	// the face facing way n nearest E: its exact normal and offset (null when none is within reach)
+	const faceNear = (E, n) => {
+		let best = reach, hit = -1;
+		for (let t = 0; t < nt; t++) {
+			if (!ok[t] || N[3 * t] * n.x + N[3 * t + 1] * n.y + N[3 * t + 2] * n.z < 1 - 1e-6) continue;
+			A.fromArray(V, tv[3 * t] * 3); B.fromArray(V, tv[3 * t + 1] * 3); C.fromArray(V, tv[3 * t + 2] * 3);
+			const d = tri.set(A, B, C).closestPointToPoint(E, Q).distanceTo(E);
+			if (d < best) { best = d; hit = t; }
+		}
+		return hit < 0 ? null : { n: new THREE.Vector3(N[3 * hit], N[3 * hit + 1], N[3 * hit + 2]), d: D[hit] };
+	};
+	// E moved the least distance that puts it on both faces
+	const onFaces = (E, a, b) => {
+		if (a && b) {
+			const c = a.n.dot(b.n), det = 1 - c * c, e1 = a.d - a.n.dot(E), e2 = b.d - b.n.dot(E);
+			if (det > 1e-6) return E.clone().addScaledVector(a.n, (e1 - c * e2) / det).addScaledVector(b.n, (e2 - c * e1) / det);
+		}
+		const f = a || b;
+		return f ? E.clone().addScaledVector(f.n, f.d - f.n.dot(E)) : E;
+	};
+	// is there part around P (a small cube there mostly inside it)?
+	const solidAt = (P, s) => {
+		const cube = MF.Manifold.cube([s, s, s], true), at = cube.translate([P.x, P.y, P.z]), hit = part.intersect(at);
+		const v = hit.volume();
+		cube.delete(); at.delete(); hit.delete();
+		return v > 0.5 * s * s * s;
+	};
+	let changed = false;
+	const chains = p.chains.map((ch) => {
+		const pts = ch.pts.map((q) => new THREE.Vector3(...q).applyMatrix4(M));
+		const n1 = ch.n1.map((q) => new THREE.Vector3(...q).applyMatrix3(nmW).normalize()), n2 = ch.n2.map((q) => new THREE.Vector3(...q).applyMatrix3(nmW).normalize());
+		const out = { ...ch, pts: [], n1: [], n2: [] };
+		pts.forEach((E, i) => {
+			const a = faceNear(E, n1[i]), b = faceNear(E, n2[i]);
+			const F = onFaces(E, a, b);
+			if (F.distanceTo(E) > 1e-9) changed = true;
+			out.pts.push(F.applyMatrix4(Mi).toArray());
+			out.n1.push((a ? a.n : n1[i]).clone().applyMatrix3(nmL).normalize().toArray());
+			out.n2.push((b ? b.n : n2[i]).clone().applyMatrix3(nmL).normalize().toArray());
+			pts[i] = F;
+		});
+		// open ends: onto the face the edge ends at (facing along the edge, or back along it where the part goes on)
+		if (!ch.closed && pts.length > 1) {
+			for (const i of [0, pts.length - 1]) {
+				const t = pts[i].clone().sub(pts[i === 0 ? 1 : pts.length - 2]).normalize();
+				const f = faceNear(pts[i], t) || faceNear(pts[i], t.clone().negate());
+				if (!f) continue;
+				const k = f.n.dot(t);
+				if (Math.abs(k) < 0.5) continue;
+				const F = pts[i].clone().addScaledVector(t, (f.d - f.n.dot(pts[i])) / k);
+				if (F.distanceTo(pts[i]) <= 1e-9) continue;
+				changed = true;
+				pts[i] = F;
+				out.pts[i] = F.clone().applyMatrix4(Mi).toArray();
+			}
+		}
+		if (!ch.closed && ch.convex && pts.length > 1) {
+			const ext = Math.max(0.05, rMax * 0.05), inward = Math.min(rMax * 0.2, 0.2), s = Math.min(ext * 0.5, inward);
+			const stop = [0, pts.length - 1].map((i) => {
+				const j = i === 0 ? 1 : pts.length - 2;
+				const t = pts[i].clone().sub(pts[j]).normalize();
+				const into = n1[i].clone().add(n2[i]).normalize().negate(); // into the corner the cutter removes
+				return solidAt(pts[i].clone().addScaledVector(t, ext * 0.6).addScaledVector(into, inward), s);
+			});
+			if (stop[0] || stop[1]) { out.stop = stop; changed = true; } else delete out.stop;
+		}
+		return out;
+	});
+	return changed ? { ...p, chains } : null;
 }
 
 function cleanMatrix(e) {
@@ -527,9 +714,10 @@ export class Engine {
 		}
 		// while the background workers rebuild, everything else (handles, picking, stats) sees the last shape
 		// instead of building it here and freezing the page
-		if (this.building && !this.inBuild && this.lastById.has(node.id)) return this.lastById.get(node.id);
+		// (counted: whatever is made from a stale shape is not kept under the current key — see manifoldOf)
+		if (this.building && !this.inBuild && this.lastById.has(node.id)) { this.staleServed = (this.staleServed || 0) + 1; return this.lastById.get(node.id); }
 		let g;
-		const t0 = performance.now();
+		const t0 = performance.now(), stale0 = this.staleServed || 0;
 		if (this.fitOf(node)) {
 			// grown holes that took a while are kept across sessions
 			const h = hashKey(key);
@@ -545,7 +733,7 @@ export class Engine {
 			g.computeBoundingSphere();
 		}
 		this.cost.set(node.id, performance.now() - t0);
-		this.remember(key, g);
+		if ((this.staleServed || 0) === stale0) this.remember(key, g); // built from a stale part: not the current shape
 		this.lastById.set(node.id, g);
 		return g;
 	}
@@ -642,7 +830,12 @@ export class Engine {
 				const csgJob = (group) => {
 					const mode = group.mode || 'union';
 					// face moves work on the combined solid in order: built here, on the kernel
-					if (hasMoves(group) || mode === 'symmetric') { const m = this.manifoldOf(group); return m && !m.isEmpty() ? fromManifold(m) : null; }
+					if (hasMoves(group) || mode === 'symmetric') {
+						// as the builder: never from the stale shapes handed out meanwhile (it is what replaces them)
+						const was = this.inBuild;
+						this.inBuild = true;
+						try { const m = this.manifoldOf(group); return m && !m.isEmpty() ? fromManifold(m) : null; } finally { this.inBuild = was; }
+					}
 					let S, H;
 					if (MESH_MODES.has(mode)) {
 						const items = [];
@@ -737,13 +930,14 @@ export class Engine {
 		const hit = this.mcache.get(key);
 		if (hit) { this.mcache.delete(key); this.mcache.set(key, hit); return hit; }
 		let m = null;
-		const mode = node.mode || 'union';
+		const mode = node.mode || 'union', stale0 = this.staleServed || 0;
 		if (node.type === 'group' && !this.fitOf(node) && !MESH_MODES.has(mode)) m = this.groupManifold(node);
 		else {
 			const g = this.geometry(node);
 			if (g) m = toManifold(g);
 		}
-		if (m) this.keepManifold(key, m);
+		// made from a stale shape (handed out while the workers rebuild): kept aside, so the next call builds it for real
+		if (m) this.keepManifold((this.staleServed || 0) === stale0 ? key : 'stale|' + key, m);
 		return m;
 	}
 
@@ -817,15 +1011,26 @@ export class Engine {
 				if ((k.type === 'facex' || k.type === 'facemove' || k.type === 'faceoff') && k.params && k.params.ref) {
 					flush();
 					if (!acc) continue;
+					// a flat push/pull: built on the face exactly as it is on the part now (see exactFacePrism); the stored
+					// outline is only the fallback when that face is not found
+					let exact = null;
+					try { exact = k.type === 'facex' ? exactFacePrism(acc, k) : null; } catch { exact = null; } // the stored outline is used then
+					if (exact) { acc = keep(k.hole ? acc.subtract(keep(exact)) : acc.add(keep(exact))); continue; }
 					f = this.refoundFeature(acc, k) || k;
 					if (k.type === 'facex') {
 						const m = place(f);
-						// pulls only: a cut whose sides exactly continue the part's outside faces would leave zero-thickness skins
-						const fit = m && !k.hole && fitToFace(m, acc, nodeMatrix(f));
-						if (fit) keep(fit);
-						if (m) acc = keep(k.hole ? acc.subtract(fit || m) : acc.add(fit || m));
+						if (m) acc = keep(k.hole ? acc.subtract(m) : acc.add(m));
 						continue;
 					}
+				}
+				if (k.type === 'edgeop') {
+					flush();
+					if (!acc) continue;
+					let fitted = null;
+					try { fitted = fitEdgeChains(acc, k); } catch { fitted = null; } // as stored then
+					const m = place(fitted ? { ...k, id: k.id + '#fit', params: fitted } : k);
+					if (m) acc = keep(k.hole ? acc.subtract(m) : acc.add(m));
+					continue;
 				}
 				if (k.type === 'facemove') {
 					flush();
@@ -886,6 +1091,9 @@ export class Engine {
 		// the face as remembered, still there: keep the stored outline (no drift from re-measuring)
 		const same = bestD < 1e-4 && Math.abs(r.area - (ref.area || 0)) <= 1e-4 * Math.max(1, ref.area || 0);
 		if (same) return null;
+		// the remembered face is gone (the point is off the face found, and that face is a very different size): don't take
+		// another face's outline in its place — a patch on a small face would grow to the whole floor
+		if (bestD > 1e-3 && ref.area > 0 && (r.area > 3 * ref.area || r.area < ref.area / 3)) return null;
 		if (curved) {
 			if (!r.curved) return null;
 			const sm = (v) => v.toArray().map(snapMeasured);

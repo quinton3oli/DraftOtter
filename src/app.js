@@ -86,6 +86,15 @@ function snapPushPull(n, ex = {}) {
 	return changed;
 }
 
+/**
+ * Float noise only (9 decimals): stored positions and sizes are kept exactly. Rounding them to 0.1 µm here and there
+ * (each group, ungroup, move or copy) let parts creep off each other's faces, a fraction of a micron each time, and the
+ * joins then showed as hairline steps and sliver triangles.
+ */
+const exact = (v) => round(v, 9);
+/** A decomposed matrix as a node transform, without rounding anything off it. */
+const trs = (p, e, s) => ({ pos: [exact(p.x), exact(p.y), exact(p.z)], rot: [snapAngle(e.x / DEG), snapAngle(e.y / DEG), snapAngle(e.z / DEG)], scale: [exact(s.x), exact(s.y), exact(s.z)] });
+
 const PRESETS = {
 	holeCyl: { label: 'Round hole', make: () => makeNode('cylinder', { r: 5, h: 20 }, { hole: true, name: 'Round hole' }) },
 	holeBox: { label: 'Box hole', make: () => makeNode('box', {}, { hole: true, name: 'Box hole' }) },
@@ -692,7 +701,8 @@ class App {
 	// Drop the expression for any transform value that is being changed directly.
 	/**
 	 * Scales are stored rounded (1.03333 for 31/30), which leaves sizes a fraction of a micron off (61.9998 instead of
-	 * 62). Snap every scaled object's size to the micron and keep the exact scale for it.
+	 * 62). Snap every scaled object's size to the micron and keep the exact scale for it — on every edit only when the
+	 * size is off by float noise or by such an old rounding (explicit: Round dimensions, to the chosen step).
 	 */
 	/**
 	 * Values copied from 32-bit geometry carry float noise (46.9999 for 47, 30.5001 for 30.5). Parts placed with them
@@ -704,7 +714,10 @@ class App {
 		let changed = 0;
 		const walk = (n) => {
 			const ex = n.exprs || {};
-			for (let i = 0; i < 3; i++) if (!ex['pos.' + i]) { const v = snapNoise(n.pos[i]) || 0; if (v !== n.pos[i]) { n.pos[i] = v; changed++; } }
+			// positions: a value rounded to 4 decimals (as older versions stored them: 46.9999) within 0.15 µm of a micron,
+			// others within 0.05 µm (transforms are kept exact now; a wider snap would mostly move parts placed by
+			// rotations — each on its own, off the faces they sat flush against)
+			for (let i = 0; i < 3; i++) if (!ex['pos.' + i]) { const v = snapNoise(n.pos[i], round(n.pos[i], 4) === n.pos[i] ? 1.5e-4 : 5e-5) || 0; if (v !== n.pos[i]) { n.pos[i] = v; changed++; } }
 			// push/pull features are measured off the mesh, so they are kept on whole microns (outline, depth, placement)
 			const pp = n.type === 'facex' || n.type === 'faceoff' || n.type === 'facemove';
 			if (pp) {
@@ -726,7 +739,7 @@ class App {
 		return changed;
 	}
 
-	tidyScales(step = 0.001, roots = this.model.nodes, onlyBuilt = false) {
+	tidyScales(step = 0.001, roots = this.model.nodes, onlyBuilt = false, explicit = false) {
 		const walk = (n) => {
 			if (n.scale && n.scale.some((v) => v !== 1)) {
 				const g = onlyBuilt ? this.engine.cache.get(this.engine.key(n)) : this.engine.geometry(n);
@@ -736,7 +749,10 @@ class App {
 					n.scale = n.scale.map((v, i) => {
 						if (v === 1 || !(b[i] > 1e-6) || (n.exprs && n.exprs['scale.' + i])) return v;
 						const t = (Math.sign(v) * snapTo(Math.abs(v) * b[i], step)) / b[i];
-						return t && Math.abs(t * b[i] - v * b[i]) <= step / 2 + 1e-9 ? t : v;
+						// only when the size is off by float noise: snapping further would move the part's faces off its neighbors'
+						// a scale saved rounded to 5 decimals by older versions (1.03333 for 62/60) is put back exactly, as is float noise
+						const legacy = round(v, 5) === v && Math.abs(t - v) <= 5e-6 + 1e-12;
+						return t && Math.abs(t * b[i] - v * b[i]) <= step / 2 + 1e-9 && (explicit || legacy || Math.abs(t * b[i] - v * b[i]) <= Math.max(2e-6, Math.abs(v * b[i]) * 1.2e-6)) ? t : v;
 					});
 				}
 			}
@@ -759,7 +775,7 @@ class App {
 		const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
 		local.decompose(p, q, s);
 		const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-		const next = { pos: [round(p.x), round(p.y), round(p.z)], rot: [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)], scale: [round(s.x, 5), round(s.y, 5), round(s.z, 5)] };
+		const next = trs(p, e, s);
 		this.clearTransformExprs(node, next);
 		Object.assign(node, next);
 	}
@@ -1205,9 +1221,9 @@ class App {
 		const g = makeGroup([], { name: node.name, color: node.color });
 		g.featureGroup = true;
 		g.filletGroup = true;
-		g.pos = [round(c.x), round(c.y), round(c.z)];
+		g.pos = [round(c.x, 3), round(c.y, 3), round(c.z, 3)];
 		for (let i = 0; i < 3; i++) this.setExpr(node, 'pos.' + i, null);
-		node.pos = [round(node.pos[0] - g.pos[0]), round(node.pos[1] - g.pos[1]), round(node.pos[2] - g.pos[2])];
+		node.pos = node.pos.map((v, i) => exact(v - g.pos[i]));
 		node.locked = false;
 		g.children = [node];
 		f.list.splice(idx, 1, g);
@@ -1622,9 +1638,7 @@ class App {
 			const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
 			M.decompose(p, q, s);
 			const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-			n.pos = [round(p.x + off), round(p.y + off), round(p.z)];
-			n.rot = [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)];
-			n.scale = [round(s.x, 5), round(s.y, 5), round(s.z, 5)];
+			Object.assign(n, trs(p.add(new THREE.Vector3(off, off, 0)), e, s));
 			n.locked = false;
 			this.model.nodes.push(n);
 			ids.push(n.id);
@@ -1667,9 +1681,7 @@ class App {
 				const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
 				local.decompose(p, q, s);
 				const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-				c.pos = [round(p.x), round(p.y), round(p.z)];
-				c.rot = [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)];
-				c.scale = [round(s.x, 5), round(s.y, 5), round(s.z, 5)];
+				Object.assign(c, trs(p, e, s));
 			});
 		}
 		this.lastDup = { newIds: ids, src };
@@ -1698,18 +1710,19 @@ class App {
 		const c = box.getCenter(new THREE.Vector3());
 		const pObj = parent ? this.vp.objs.get(parent.id) : null;
 		if (pObj) pObj.worldToLocal(c);
+		c.set(round(c.x, 3), round(c.y, 3), round(c.z, 3)); // a clean origin; the children keep their exact places
 		const list = parent ? parent.children : this.model.nodes;
 		const idx = Math.min(...nodes.map((n) => list.indexOf(n)));
 		for (const n of nodes) list.splice(list.indexOf(n), 1);
 		for (const n of nodes) {
-			n.pos = [round(n.pos[0] - c.x), round(n.pos[1] - c.y), round(n.pos[2] - c.z)];
+			n.pos = [exact(n.pos[0] - c.x), exact(n.pos[1] - c.y), exact(n.pos[2] - c.z)];
 			n.locked = false;
 		}
 		const g = makeGroup(nodes, { mode, name: name || (mode === 'offset' ? `Offset ${opts.offset > 0 ? '+' : ''}${fmt(opts.offset, 2)}` : mode === 'intersect' ? 'Intersection' : mode === 'hull' ? 'Hull' : nodes.some((n) => n.hole) ? 'Cut' : 'Union') });
 		if (mode === 'offset') g.offset = opts.offset;
 		if (mode === 'texture') g.texture = { ...opts.texture };
 		if (mode === 'deform') g.deform = { ...opts.deform };
-		g.pos = [round(c.x), round(c.y), round(c.z)];
+		g.pos = [c.x, c.y, c.z];
 		list.splice(idx, 0, g);
 		this.sel = [g.id];
 		this.commit();
@@ -1730,9 +1743,7 @@ class App {
 				const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
 				M.decompose(p, q, s);
 				const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-				c.pos = [round(p.x), round(p.y), round(p.z)];
-				c.rot = [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)];
-				c.scale = [round(s.x, 5), round(s.y, 5), round(s.z, 5)];
+				Object.assign(c, trs(p, e, s));
 				if (g.hole) c.hole = true;
 				return c;
 			});

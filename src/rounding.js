@@ -13,10 +13,10 @@ export function snapTo(v, step) {
  * Float noise from 32-bit geometry (46.9999, 30.5001): a value within 0.15 µm of a whole micron is snapped to it;
  * anything else (12.3456) is kept as it is.
  */
-export function snapNoise(v) {
+export function snapNoise(v, tol = 1.5e-4) {
 	if (typeof v !== 'number' || !isFinite(v)) return v;
 	const r = Math.round(v * 1000) / 1000;
-	return r !== v && Math.abs(v - r) < 1.5e-4 ? +r.toFixed(3) : v;
+	return r !== v && Math.abs(v - r) < tol ? +r.toFixed(3) : v;
 }
 
 /**
@@ -94,7 +94,7 @@ export const RoundMixin = {
 			const before = new Map();
 			const keep = (n) => { before.set(n, n.scale.slice()); (n.children || []).forEach(keep); };
 			roots.forEach(keep);
-			this.tidyScales(opts.step, roots);
+			this.tidyScales(opts.step, roots, false, true);
 			for (const [n, s] of before) {
 				if (s.some((v, i) => v !== n.scale[i])) {
 					out.count++;
