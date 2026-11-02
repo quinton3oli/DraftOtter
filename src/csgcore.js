@@ -20,18 +20,44 @@ export function rawOf(m) {
 
 const PERM = { x: [1, 2, 0], y: [2, 0, 1], z: [0, 1, 2] };
 
-// Non-indexed geometry -> Manifold (throws if not a closed solid).
+/**
+ * The value a 32-bit coordinate stands for: the shortest decimal that is stored as exactly that 32-bit number (a box
+ * 22.7 wide has its corners at 11.35000038 in 32-bit; this gives 11.35 back). Shapes are built in 32-bit, so without
+ * this two parts meant to touch at 11.35 could meet a fraction of a micron apart.
+ */
+const decCache = new Map();
+export function intended(v) {
+	if (Math.fround(v) !== v) return v; // not a 32-bit value: already exact
+	let r = decCache.get(v);
+	if (r !== undefined) return r;
+	// a value typed or computed to up to 7 significant digits comes back exactly (11.350000381 → 11.35); anything else (a
+	// point on a curve) has no shorter form and stays as it is
+	const x = +v.toPrecision(7);
+	r = Math.fround(x) === v ? x : v;
+	if (decCache.size > 500000) decCache.clear();
+	decCache.set(v, r);
+	return r;
+}
+
+// Non-indexed geometry -> Manifold (throws if not a closed solid). geom.matrix (column-major 4×4, optional) places it,
+// in full precision (baking the placement into 32-bit points first would round every placed corner again).
 export function toManifold(geom) {
 	// shared corners found by exact coordinates (typed-array hashing; indexed input is fine too)
 	const w = weld(geom.attributes.position.array, geom.index ? geom.index.array : null, 0);
 	const mesh = new MF.Mesh({ numProp: 3, vertProperties: new Float32Array(w.verts), triVerts: w.ids });
 	mesh.merge();
-	const m = new MF.Manifold(mesh);
+	let m = new MF.Manifold(mesh);
 	const st = m.status();
 	if (st !== 'NoError') {
 		m.delete();
 		throw new Error('Manifold input error: ' + st);
 	}
+	// every corner at the value it was meant to have, in full precision
+	try {
+		const exact = m.warpBatch((v, count) => { for (let i = 0; i < count * 3; i++) v[i] = intended(v[i]); });
+		if (exact.status() === 'NoError') { m.delete(); m = exact; } else exact.delete();
+	} catch { /* keep the 32-bit one */ }
+	if (geom.matrix) { const placed = m.transform(Array.from(geom.matrix)); m.delete(); m = placed; }
 	return m;
 }
 

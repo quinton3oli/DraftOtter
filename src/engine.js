@@ -166,6 +166,7 @@ const hasMoves = (g) => {
 		if (c.type === 'facemove' || c.type === 'faceoff') return true;
 		if (c.type === 'facex' && c.params && c.params.ref) return true; // finds its face again on the part built before it
 		if (c.type === 'facex' && !c.hole && c.params && (c.params.depth || 0) > 0) return true; // a pull is set exactly onto its face (same result as all at once)
+		if (c.type === 'facex' && c.hole && c.params && !c.params.ref) return true; // an older cut too (still cut with the other holes)
 		if (c.type === 'edgeop') return true; // fitted onto the edges of the part built before it
 		if (isFaceSketch(c)) return true; // starts exactly on its face of the part built before it
 		if (c.hole) cut = true;
@@ -333,10 +334,13 @@ export function exactFacePrism(part, feature) {
 			}
 		}
 	}
-	if (best > 1e-3 && ref.area > 0) {
+	if ((best > 1e-3 || ref.derived) && ref.area > 0) {
 		let area = 0;
 		for (let t = 0; t < nt; t++) if (inFace[t]) { A.fromArray(V, tv[3 * t] * 3); B.fromArray(V, tv[3 * t + 1] * 3); Cc.fromArray(V, tv[3 * t + 2] * 3); area += tri.set(A, B, Cc).getArea(); }
 		if (area > 3 * ref.area || area < ref.area / 3) return null; // not the remembered face (that one is gone)
+		// an older push/pull (face taken from its own outline): only when that outline is the face, give or take
+		// rounding — an outline drawn past the face (a cut running on into the part below) stays as it was made
+		if (ref.derived && Math.abs(area - ref.area) > 0.01 * ref.area) return null;
 	}
 	// its boundary: directed edges whose reverse is not in the face, chained into loops of vertex indices
 	const dir = new Set();
@@ -536,7 +540,7 @@ function baseRefOf(k) {
 	const n = new THREE.Vector3(e[8], e[9], e[10]).normalize();
 	const sx = Math.hypot(e[0], e[1], e[2]), sy = Math.hypot(e[4], e[5], e[6]);
 	const area = Math.abs(THREE.ShapeUtils.area(outer)) - holes.reduce((s, h) => s + Math.abs(THREE.ShapeUtils.area(h)), 0);
-	return { p: P.toArray(), n: n.toArray(), area: area * sx * sy };
+	return { p: P.toArray(), n: n.toArray(), area: area * sx * sy, derived: true };
 }
 
 function cleanMatrix(e) {
@@ -895,10 +899,13 @@ export class Engine {
 						H = items.filter((i) => i.c.hole).map(({ c, g: cg }) => baked(cg, nodeMatrix(c)));
 					} else {
 						// chains flattened into one operation, as on the main thread
+						// each part as its own points and the matrix that places it: placed by the kernel in full precision
 						const { solids, holes } = this.flatGather(group);
-						const bk = ({ node, M }) => { const cg = this.built(node); return cg ? baked(cg, M) : null; };
+						const bk = ({ node, M }) => { const cg = this.built(node); return cg ? { pos: new Float32Array((cg.index ? cg.toNonIndexed() : cg).attributes.position.array), m: cleanMatrix(M.elements) } : null; };
 						S = solids.map(bk).filter(Boolean);
 						H = holes.map(bk).filter(Boolean);
+						if (!S.length) return null;
+						return run({ op: 'csg', solids: S, holes: H, intersect: group.mode === 'intersect', offset: 0, mod: null }, [...S, ...H].map((x) => x.pos));
 					}
 					if (!S.length) return null;
 					return run({ op: 'csg', solids: S, holes: H, intersect: group.mode === 'hull' ? 'hull' : group.mode === 'intersect', offset: group.mode === 'offset' ? group.offset || 0 : 0, mod: modifierOf(group, S) }, [...S, ...H]);
@@ -1059,6 +1066,14 @@ export class Engine {
 				// a push/pull made with a remembered face finds that face again on the part as built so far, so it follows
 				// edits made before it (a taller box: the pull starts from the new top)
 				let f = k;
+				// a cut made before push/pulls remembered their face: set exactly onto its face of the part so far, and cut
+				// together with the group's other holes as before
+				if (k.type === 'facex' && k.hole && k.params && !k.params.ref && !k.params.draft && (k.params.depth || 0) < 0) {
+					const ref = baseRefOf(k), base = ref && (S.length ? keep(MF.Manifold.union(acc ? [acc, ...S] : S)) : acc);
+					let exact = null;
+					try { exact = base ? exactFacePrism(base, { ...k, params: { ...k.params, ref } }) : null; } catch { exact = null; }
+					if (exact) { H.push(keep(exact)); continue; }
+				}
 				// a pull made before push/pulls remembered their face: its face is its own base, found the same way
 				if (k.type === 'facex' && !k.hole && k.params && !k.params.ref && !k.params.draft && (k.params.depth || 0) > 0) { const ref = baseRefOf(k); if (ref) { k = { ...k, params: { ...k.params, ref } }; f = k; } }
 				if ((k.type === 'facex' || k.type === 'facemove' || k.type === 'faceoff') && k.params && k.params.ref) {
@@ -1069,7 +1084,8 @@ export class Engine {
 					let exact = null;
 					try { exact = k.type === 'facex' ? exactFacePrism(acc, k) : null; } catch { exact = null; } // the stored outline is used then
 					if (exact) { acc = keep(k.hole ? acc.subtract(keep(exact)) : acc.add(keep(exact))); continue; }
-					f = this.refoundFeature(acc, k) || k;
+					// (an older one whose outline is not just its face is used as stored, not re-taken from some face)
+					f = k.params.ref.derived ? kids.find((x) => x.id === k.id) || k : this.refoundFeature(acc, k) || k;
 					if (k.type === 'facex') {
 						const m = place(f);
 						if (m) acc = keep(k.hole ? acc.subtract(m) : acc.add(m));
@@ -1132,7 +1148,8 @@ export class Engine {
 	 */
 	refoundFeature(acc, k) {
 		const ref = k.params.ref, P = new THREE.Vector3(...ref.p), N = new THREE.Vector3(...ref.n).normalize();
-		const raw = rawOf(acc), g = new THREE.BufferGeometry();
+		// the part's own 64-bit points (its 32-bit mesh would put the re-measured face a fraction of a micron off)
+		const em = exactMesh(acc), raw = em ? { pos: em.V, idx: new Uint32Array(em.tv) } : rawOf(acc), g = new THREE.BufferGeometry();
 		g.setAttribute('position', new THREE.BufferAttribute(raw.pos, 3));
 		g.setIndex(new THREE.BufferAttribute(raw.idx, 1));
 		const mesh = new THREE.Mesh(g);
@@ -1150,9 +1167,7 @@ export class Engine {
 		if (best < 0) return null;
 		const r = faceRegion(mesh, best);
 		if (!r) return null;
-		// the face as remembered, still there: keep the stored outline (no drift from re-measuring)
-		const same = bestD < 1e-4 && Math.abs(r.area - (ref.area || 0)) <= 1e-4 * Math.max(1, ref.area || 0);
-		if (same) return null;
+		// re-measured in 64-bit every time: no drift, and outlines older versions saved rounded are replaced by the real face
 		// the remembered face is gone (the point is off the face found, and that face is a very different size): don't take
 		// another face's outline in its place — a patch on a small face would grow to the whole floor
 		if (bestD > 1e-3 && ref.area > 0 && (r.area > 3 * ref.area || r.area < ref.area / 3)) return null;

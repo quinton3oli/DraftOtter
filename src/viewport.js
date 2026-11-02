@@ -6,7 +6,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { nodeMatrix } from './engine.js';
-import { DEG, round, fmt } from './util.js';
+import { DEG, round, exact, fmt } from './util.js';
+import { snapAngle } from './rounding.js';
 import { EditHandles } from './handles.js';
 import { AlignTool } from './align.js';
 import { FilletTool } from './filletTool.js';
@@ -1931,8 +1932,8 @@ export function planeBasis(normal) {
 export function objTransform(obj) {
 	const e = new THREE.Euler().setFromQuaternion(obj.quaternion, 'XYZ');
 	return {
-		pos: [round(obj.position.x), round(obj.position.y), round(obj.position.z)],
-		rot: [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)],
-		scale: [round(obj.scale.x, 9), round(obj.scale.y, 9), round(obj.scale.z, 9)], // exact: a rounded scale leaves the size off
+		pos: [exact(obj.position.x), exact(obj.position.y), exact(obj.position.z)], // exact: snapping already happened while dragging
+		rot: [snapAngle(e.x / DEG), snapAngle(e.y / DEG), snapAngle(e.z / DEG)],
+		scale: [exact(obj.scale.x), exact(obj.scale.y), exact(obj.scale.z)], // exact: a rounded scale leaves the size off
 	};
 }

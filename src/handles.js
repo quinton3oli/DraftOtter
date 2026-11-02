@@ -3,7 +3,8 @@
 //  - scale mode: face & corner handles that move one side (opposite side fixed), snapped sizes
 //  - rotate mode: axis rings with a protractor sector and snapped angle readout
 import * as THREE from 'three';
-import { DEG, fmt, evalExpr, round } from './util.js';
+import { DEG, fmt, evalExpr, round, exact } from './util.js';
+import { snapAngle } from './rounding.js';
 
 const AXES = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
 const AXIS_COLORS = [0xef6a5f, 0x5ccb6f, 0x4aa3ff];
@@ -623,8 +624,8 @@ function closestOnLine(ray, P, d) {
 function objTransformLocal(obj) {
 	const e = new THREE.Euler().setFromQuaternion(obj.quaternion, 'XYZ');
 	return {
-		pos: [round(obj.position.x), round(obj.position.y), round(obj.position.z)],
-		rot: [round(e.x / DEG, 3), round(e.y / DEG, 3), round(e.z / DEG, 3)],
-		scale: [round(obj.scale.x, 9), round(obj.scale.y, 9), round(obj.scale.z, 9)], // exact: a rounded scale leaves the size off
+		pos: [exact(obj.position.x), exact(obj.position.y), exact(obj.position.z)], // exact: snapping already happened while dragging
+		rot: [snapAngle(e.x / DEG), snapAngle(e.y / DEG), snapAngle(e.z / DEG)],
+		scale: [exact(obj.scale.x), exact(obj.scale.y), exact(obj.scale.z)], // exact: a rounded scale leaves the size off
 	};
 }

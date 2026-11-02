@@ -4,7 +4,8 @@ import Module from 'manifold-3d/manifold.js';
 import { setMF, csgRaw, growRaw, setFastFit, creased } from './csgcore.js';
 
 let ready = null;
-const geo = (a) => ({ attributes: { position: { array: a } }, index: null });
+// a part: its points (already placed), or { pos, m } — its own points and the matrix that places it (in full precision)
+const geo = (a) => (a && a.pos ? { attributes: { position: { array: a.pos } }, index: null, matrix: a.m } : { attributes: { position: { array: a } }, index: null });
 
 self.onmessage = async (e) => {
 	const m = e.data;
