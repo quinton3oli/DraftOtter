@@ -3527,6 +3527,34 @@ class App {
 			r.append(caret, sw, name, tag || '', el('span', { class: 'grow' }), ren, parent ? '' : eye, lock);
 			r.addEventListener('click', (e) => this.onPick(n.id, e.shiftKey || e.ctrlKey || e.metaKey));
 			r.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!selSet.has(n.id)) this.setSelection([n.id]); this.contextMenu({ x: e.clientX, y: e.clientY }); });
+			// drag to another level: onto a row's top / bottom edge = above / below it (at its level), onto a group's
+			// middle = into that group
+			r.draggable = true;
+			r.addEventListener('dragstart', (e) => {
+				const ids = selSet.has(n.id) ? this.sel.slice() : [n.id];
+				this.treeDrag = ids;
+				e.dataTransfer.setData('text/draftotter-node', ids.join(','));
+				e.dataTransfer.effectAllowed = 'move';
+			});
+			r.addEventListener('dragend', () => { this.treeDrag = null; tree.querySelectorAll('.drop-above, .drop-below, .drop-into').forEach((x) => x.classList.remove('drop-above', 'drop-below', 'drop-into')); tree.classList.remove('drop-top'); });
+			const zone = (e) => { const b = r.getBoundingClientRect(), f = (e.clientY - b.top) / b.height; return isGroup && f > 0.25 && f < 0.75 ? 'into' : f < 0.5 ? 'above' : 'below'; };
+			r.addEventListener('dragover', (e) => {
+				if (!this.treeDrag || !this.canMoveTo(this.treeDrag, n.id, zone(e))) return;
+				e.preventDefault();
+				e.stopPropagation();
+				e.dataTransfer.dropEffect = 'move';
+				const z = zone(e);
+				r.classList.toggle('drop-above', z === 'above'); r.classList.toggle('drop-below', z === 'below'); r.classList.toggle('drop-into', z === 'into');
+			});
+			r.addEventListener('dragleave', () => r.classList.remove('drop-above', 'drop-below', 'drop-into'));
+			r.addEventListener('drop', (e) => {
+				if (!this.treeDrag) return;
+				e.preventDefault();
+				e.stopPropagation();
+				const ids = this.treeDrag, z = zone(e);
+				this.treeDrag = null;
+				if (this.canMoveTo(ids, n.id, z)) this.moveToLevel(ids, n.id, z);
+			});
 			tree.appendChild(r);
 			if (isGroup && n.expanded) for (const c of n.children) row(c, depth + 1, n);
 		};
@@ -3536,8 +3564,97 @@ class App {
 			while (p) { p.expanded = true; p = this.model.parentOf(p.id); }
 		}
 		for (let i = this.model.nodes.length - 1; i >= 0; i--) row(this.model.nodes[i], 0, null);
+		// dropped on the empty space below the list: out to the top level (at the top of the list)
+		if (!tree.dataset.dnd) {
+			tree.dataset.dnd = '1';
+			tree.addEventListener('dragover', (e) => { if (!this.treeDrag || !this.treeDrag.some((id) => !this.model.isTopLevel(id))) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; tree.classList.add('drop-top'); });
+			tree.addEventListener('dragleave', (e) => { if (e.target === tree) tree.classList.remove('drop-top'); });
+			tree.addEventListener('drop', (e) => { tree.classList.remove('drop-top'); if (!this.treeDrag) return; e.preventDefault(); const ids = this.treeDrag; this.treeDrag = null; this.moveToLevel(ids, null, 'top'); });
+		}
 		$('#tree-count').textContent = this.model.nodes.length ? String(this.model.nodes.length) : '';
 		if (!this.model.nodes.length) tree.appendChild(el('div', { class: 'muted pad' }, 'No objects yet.'));
+	}
+
+	/** Whether nodes can go above / below / into target (never into themselves or their own groups). */
+	canMoveTo(ids, targetId, where) {
+		const target = targetId && this.model.get(targetId);
+		if (targetId && !target) return false;
+		if (where === 'into' && (!target || target.type !== 'group')) return false;
+		const nodes = ids.map((id) => this.model.get(id)).filter(Boolean);
+		if (!nodes.length) return false;
+		for (const n of nodes) {
+			if (n.id === targetId) return false;
+			for (let p = target; p; p = this.model.parentOf(p.id)) if (p.id === n.id) return false; // its own group
+		}
+		return true;
+	}
+
+	/**
+	 * Move objects to another level of the tree: where = 'above' / 'below' a target (at its level, as the list shows
+	 * it), 'into' a target group (last inside it), or 'top' (top level, top of the list). Each object keeps its exact
+	 * place in the world; a group left empty is removed. One undo step.
+	 */
+	moveToLevel(ids, targetId, where) {
+		if (!this.canMoveTo(ids, targetId, where)) return false;
+		const all = ids.map((id) => this.model.get(id)).filter(Boolean);
+		// a group and something inside it: move the group (its contents go with it)
+		const within = (n, g) => { for (let p = this.model.parentOf(n.id); p; p = this.model.parentOf(p.id)) if (p === g) return true; return false; };
+		const nodes = all.filter((n) => !all.some((g) => g !== n && within(n, g)));
+		const target = targetId ? this.model.get(targetId) : null;
+		// where they are in the world now
+		const world = new Map(nodes.map((n) => [n.id, this.worldMatrix(n)]));
+		const oldParents = new Set(nodes.map((n) => this.model.parentOf(n.id)).filter(Boolean));
+		for (const n of nodes) { const f = this.model.find(n.id); f.list.splice(f.list.indexOf(n), 1); }
+		// the new parent and spot in its list (the top level is listed newest first, a group's contents in order)
+		let parent, list, at;
+		if (where === 'top') { parent = null; list = this.model.nodes; at = list.length; }
+		else if (where === 'into') { parent = target; list = target.children; at = list.length; target.expanded = true; }
+		else {
+			parent = this.model.parentOf(target.id);
+			list = parent ? parent.children : this.model.nodes;
+			const i = list.indexOf(target), reversed = !parent;
+			at = (where === 'above') !== reversed ? i : i + 1;
+		}
+		const inv = (parent ? this.worldMatrix(parent) : new THREE.Matrix4()).invert();
+		list.splice(at, 0, ...nodes);
+		for (const n of nodes) {
+			const p = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+			inv.clone().multiply(world.get(n.id)).decompose(p, q, sc);
+			const next = trs(p, new THREE.Euler().setFromQuaternion(q, 'XYZ'), sc);
+			this.clearTransformExprs(n, next);
+			Object.assign(n, next);
+			n.locked = false;
+		}
+		// groups emptied by the move go away
+		const prune = (g) => {
+			if (!g || g.children.length) return;
+			const f = this.model.find(g.id);
+			if (!f) return;
+			const up = this.model.parentOf(g.id);
+			f.list.splice(f.list.indexOf(g), 1);
+			prune(up);
+		};
+		for (const g of oldParents) if (!nodes.includes(g)) prune(g);
+		this.sel = nodes.map((n) => n.id);
+		this.commit();
+		const label = nodes.length > 1 ? `${nodes.length} objects` : `“${nodes[0].name || nodes[0].type}”`;
+		toast(where === 'top' ? `Moved ${label} to the top level` : where === 'into' ? `Moved ${label} into “${target.name}”` : `Moved ${label} next to “${target.name}”`, 'ok', 2200);
+		return true;
+	}
+
+	/** Pick a group to move the selection into. */
+	moveIntoGroupDialog() {
+		const ids = this.sel.slice();
+		const groups = [];
+		const walk = (n, depth) => { if (n.type !== 'group') return; if (this.canMoveTo(ids, n.id, 'into') && !ids.some((id) => this.model.parentOf(id) === n)) groups.push({ n, depth }); for (const c of n.children) walk(c, depth + 1); };
+		for (let i = this.model.nodes.length - 1; i >= 0; i--) walk(this.model.nodes[i], 0);
+		if (!groups.length) { toast('There is no other group to move it into', 'warn'); return; }
+		const pick = el('select', { id: 'mv-group', size: Math.min(10, Math.max(2, groups.length)), style: 'width:100%' }, ...groups.map(({ n, depth }) => el('option', { value: n.id }, '   '.repeat(depth) + (n.name || 'Group'))));
+		pick.value = groups[0].n.id;
+		this.modal('Move into group', el('div', { class: 'form' }, el('p', { class: 'muted small' }, 'It keeps its place in the design; only the group it belongs to changes.'), pick), [
+			{ label: 'Cancel' },
+			{ label: 'Move', primary: true, action: () => { this.moveToLevel(ids, pick.value, 'into'); } },
+		]);
 	}
 
 	// Inline rename in the Objects list (also from F2, the pencil button and the right-click menu).
@@ -3598,6 +3715,8 @@ class App {
 			nodes.length > 1 ? ['Arrange on a circle…', () => this.arrangeCircleDialog()] : false,
 			['Hull (blend together)  (Ctrl+H)', () => this.group('hull')],
 			nodes.some((n) => n.type === 'group') ? ['Ungroup  (Ctrl+Shift+G)', () => this.ungroup()] : false,
+			nodes.every((n) => !this.model.isTopLevel(n.id)) ? ['Move out of group', () => { const p = this.model.parentOf(nodes[0].id); this.moveToLevel(nodes.map((n) => n.id), p.id, 'above'); }] : false,
+			['Move into group…', () => this.moveIntoGroupDialog()],
 			null,
 			['Drop to bed  (D)', () => this.dropToBed()],
 			['Center on bed  (C)', () => this.centerOnBed()],

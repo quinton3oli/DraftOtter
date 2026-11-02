@@ -146,6 +146,12 @@ body.resizing-panel, body.resizing-panel * { cursor: col-resize !important; user
 .tl-banner { margin: 4px 8px 6px; padding: 6px 8px; border-radius: 6px; background: #33240f; color: #ffd29a; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
 .tree-row { display: flex; align-items: center; gap: 5px; padding: 3px 6px; cursor: pointer; white-space: nowrap; user-select: none; }
 .tree-row:hover { background: var(--panel2); }
+/* dragging in the Objects list: a line above / below the row, or the group outlined to drop into */
+.tree-row.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+.tree-row.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
+.tree-row.drop-into { background: var(--panel2); box-shadow: inset 0 0 0 1px var(--accent); }
+#tree.drop-top { box-shadow: inset 0 2px 0 var(--accent); }
+#tree { min-height: 40px; }
 .tree-row.sel { background: #123f3e; }
 .tree-row.hidden .tree-name { opacity: .45; }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
