@@ -158,12 +158,16 @@ const geomBytes = (g) => {
 // added by push/pull after a cut (e.g. thickening a filleted wall), is built in order rather than "all solids, then
 // all holes" (which would cut the fillet out of the new material too)
 const PULLS = new Set(['facex']);
+// an extrusion sketched on a face (it reaches a little back into the face, see faceSketchOn)
+const isFaceSketch = (c) => c.type === 'sketch' && !c.hole && c.params && c.params.face && c.params.face.overlap > 0;
 const hasMoves = (g) => {
 	let cut = false;
 	for (const c of g.children || []) {
 		if (c.type === 'facemove' || c.type === 'faceoff') return true;
 		if (c.type === 'facex' && c.params && c.params.ref) return true; // finds its face again on the part built before it
+		if (c.type === 'facex' && !c.hole && c.params && (c.params.depth || 0) > 0) return true; // a pull is set exactly onto its face (same result as all at once)
 		if (c.type === 'edgeop') return true; // fitted onto the edges of the part built before it
+		if (isFaceSketch(c)) return true; // starts exactly on its face of the part built before it
 		if (c.hole) cut = true;
 		else if (cut && PULLS.has(c.type)) return true;
 	}
@@ -369,7 +373,9 @@ export function exactFacePrism(part, feature) {
 	const geo = buildFaceExtrude({ loops: loops.map((lp) => lp.map(P2)), depth: p.depth });
 	if (!geo || !geo.attributes.position || !geo.attributes.position.count) return null;
 	// the two layers of the prism along the normal (see buildFaceExtrude): a pull starts a little inside the face
-	const d = p.depth || 0, layers = d < 0 ? [d, 0] : [-0.02, d];
+	// the prism's two layers along the normal: its base exactly on the face (its corners are the face's own, so it fuses
+	// without reaching into the part — a reach would stick out as a lip wherever the face is not backed by the part)
+	const d = p.depth || 0, layers = d < 0 ? [d, 0] : [0, d];
 	const M = new THREE.Matrix4().makeBasis(X, Y, n).setPosition(O);
 	const local = toManifold(geo);
 	geo.dispose();
@@ -486,6 +492,51 @@ export function fitEdgeChains(part, node) {
 		return out;
 	});
 	return changed ? { ...p, chains } : null;
+}
+
+/**
+ * An extrusion sketched on a face starts a little inside the face (params.face.overlap) so it always fuses with the
+ * part. Where the sketch runs past the face's edge, that overlap stuck out of the part as a 0.02 mm lip — a hairline
+ * ledge a slicer reads as broken. Placed on the part as built so far, it is cut off exactly at the face's plane (the
+ * part's own face, in 64-bit), so it starts on the face with nothing below it outside the part. Returns the trimmed
+ * extrusion (group frame), or null when the face is not where the sketch expects it (it is used whole then).
+ */
+export function faceSketchOn(part, prism, node) {
+	const ov = node.params.face.overlap, M = nodeMatrix(node), e = M.elements;
+	const n = new THREE.Vector3(e[8], e[9], e[10]);
+	const sz = n.length();
+	if (!(sz > 0)) return null;
+	n.divideScalar(sz);
+	const D0 = n.dot(new THREE.Vector3(0, 0, ov).applyMatrix4(M)); // where the face should be
+	const em = exactMesh(part);
+	if (!em) return null;
+	const { N, D, ok, nt } = em;
+	let best = Infinity, d = null;
+	for (let t = 0; t < nt; t++) {
+		if (!ok[t] || N[3 * t] * n.x + N[3 * t + 1] * n.y + N[3 * t + 2] * n.z < 1 - 1e-9) continue;
+		const off = Math.abs(D[t] - D0);
+		if (off < best) { best = off; d = D[t]; }
+	}
+	if (d === null || best > ov * sz * 0.5) return null;
+	const nn = Math.abs(n.x) > 1 - 1e-12 ? [Math.sign(n.x), 0, 0] : Math.abs(n.y) > 1 - 1e-12 ? [0, Math.sign(n.y), 0] : Math.abs(n.z) > 1 - 1e-12 ? [0, 0, Math.sign(n.z)] : n.toArray();
+	return prism.trimByPlane(nn, d);
+}
+
+/** The face an older flat push/pull (no remembered face) sits on: its base plane, a point inside its outline, its area. */
+function baseRefOf(k) {
+	const loops = k.params.loops;
+	if (!Array.isArray(loops) || !loops.length || loops[0].length < 3) return null;
+	const M = nodeMatrix(k), e = M.elements;
+	const toV = (lp) => lp.map(([x, y]) => new THREE.Vector2(x, y));
+	const outer = toV(loops[0]), holes = loops.slice(1).map(toV);
+	const tris = THREE.ShapeUtils.triangulateShape(outer, holes);
+	if (!tris.length) return null;
+	const all = [...outer, ...holes.flat()], [a, b, c] = tris[0].map((i) => all[i]);
+	const P = new THREE.Vector3((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, 0).applyMatrix4(M);
+	const n = new THREE.Vector3(e[8], e[9], e[10]).normalize();
+	const sx = Math.hypot(e[0], e[1], e[2]), sy = Math.hypot(e[4], e[5], e[6]);
+	const area = Math.abs(THREE.ShapeUtils.area(outer)) - holes.reduce((s, h) => s + Math.abs(THREE.ShapeUtils.area(h)), 0);
+	return { p: P.toArray(), n: n.toArray(), area: area * sx * sy };
 }
 
 function cleanMatrix(e) {
@@ -1004,10 +1055,12 @@ export class Engine {
 				if (acc && H.length) acc = keep(acc.subtract(H.length === 1 ? H[0] : keep(MF.Manifold.union(H))));
 				S = []; H = [];
 			};
-			for (const k of kids) {
+			for (let k of kids) {
 				// a push/pull made with a remembered face finds that face again on the part as built so far, so it follows
 				// edits made before it (a taller box: the pull starts from the new top)
 				let f = k;
+				// a pull made before push/pulls remembered their face: its face is its own base, found the same way
+				if (k.type === 'facex' && !k.hole && k.params && !k.params.ref && !k.params.draft && (k.params.depth || 0) > 0) { const ref = baseRefOf(k); if (ref) { k = { ...k, params: { ...k.params, ref } }; f = k; } }
 				if ((k.type === 'facex' || k.type === 'facemove' || k.type === 'faceoff') && k.params && k.params.ref) {
 					flush();
 					if (!acc) continue;
@@ -1022,6 +1075,15 @@ export class Engine {
 						if (m) acc = keep(k.hole ? acc.subtract(m) : acc.add(m));
 						continue;
 					}
+				}
+				if (isFaceSketch(k) && (acc || S.length)) {
+					flush();
+					const m = place(k);
+					if (!m) continue;
+					let trimmed = null;
+					try { trimmed = faceSketchOn(acc, m, k); } catch { trimmed = null; } // whole then
+					acc = keep(acc.add(trimmed ? keep(trimmed) : m));
+					continue;
 				}
 				if (k.type === 'edgeop') {
 					flush();
@@ -1103,8 +1165,7 @@ export class Engine {
 		if (k.type === 'facemove' && !r.blend) return null;
 		const e = new THREE.Euler().setFromQuaternion(r.basis.quat, 'XYZ');
 		const rot = [snapAngle(e.x / DEG), snapAngle(e.y / DEG), snapAngle(e.z / DEG)];
-		const aligned = rot.every((d) => Math.abs(d / 90 - Math.round(d / 90)) < 1e-9);
-		const sn = aligned ? (x) => snapTo(x, 0.001) : snapMeasured;
+		const sn = snapMeasured; // float noise only: a micron grid would move it off a face that is not on one
 		const pos = r.origin.toArray().map(sn);
 		const params = k.type === 'facemove' ? { ...k.params, outline: r.blend.outline.map(([x, y]) => [sn(x), sn(y)]), h: snapMeasured(r.blend.h) } : { ...k.params, loops: r.loops.map((lp) => lp.map(([x, y]) => [sn(x), sn(y)])) };
 		return { ...k, id: k.id + '#refound', params, pos, rot, scale: [1, 1, 1] };

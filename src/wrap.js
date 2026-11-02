@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { buildShape } from './shapes.js';
 import { makeNode, makeGroup } from './model.js';
-import { round, fmt, toast, el, evalExpr } from './util.js';
+import { round, exact, fmt, toast, el, evalExpr } from './util.js';
 
 /**
  * params: { R, depth, mode ('emboss' | 'engrave'), angle (°, around the axis; 0 = front / −Y), z (along the axis),
@@ -75,7 +75,7 @@ export const WrapMixin = {
 			const i = list.indexOf(cyl);
 			const g = makeGroup([cyl, w], { name: cyl.name + (params.mode === 'engrave' ? ' (engraved)' : ' (embossed)'), color: cyl.color });
 			g.pos = cyl.pos.slice();
-			for (const c of g.children) c.pos = c.pos.map((v, k) => round(v - g.pos[k]));
+			for (const c of g.children) c.pos = c.pos.map((v, k) => exact(v - g.pos[k]));
 			list.splice(i, 1, g);
 			this.sel = [g.id];
 		} else {

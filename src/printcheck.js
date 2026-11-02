@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { overlapOf, shellsOf } from './engine.js';
 import { fmt, el, toast, evalExpr } from './util.js';
+import { findHairlines } from './lineup.js';
 
 const DEFAULTS = { minWall: 0.8, minGap: 0.3, overhangAngle: 45 };
 
@@ -176,6 +177,11 @@ export const PrintCheckMixin = {
 		const parts = nodes.map((n) => ({ id: n.id, name: n.name || n.type, geom: this.engine.printable([n, ...all.filter((h) => h.hole)], true) })).filter((p) => p.geom);
 		o.shells = shellsOf(merged) || [];
 		const res = analyzePrint(parts, merged, o);
+		// parts a hair off their neighbors (left by older versions' rounding): offer to line them up
+		const hair = findHairlines(this), hairParts = new Set(hair.map((m) => m.node.id)).size;
+		res.items.splice(res.items.findIndex((i) => i.kind === 'slicer') + 1, 0, hair.length
+			? { kind: 'hairline', level: 'warn', title: `${hairParts} part${hairParts > 1 ? 's' : ''} a hair off ${hairParts > 1 ? 'their' : 'its'} neighbors`, detail: `Faces a hair (under 0.03 mm) from lining up (e.g. ${+hair[0].from.toFixed(4)} next to ${+hair[0].to.toFixed(4)}) — they leave hairline steps and sliver triangles where they meet`, action: { label: 'Line them up', run: () => { this.lineUpHairlines(); this.checkPrint(); } } }
+			: { kind: 'hairline', level: 'ok', title: 'Parts meet their neighbors exactly' });
 		res.ms = performance.now() - t0;
 		this.checkResult = res;
 		this.showCheckPanel(res, o);
@@ -199,6 +205,7 @@ export const PrintCheckMixin = {
 				it.shown = true;
 				row.appendChild(el('label', { class: 'fp-show' }, cb, 'show'));
 			}
+			if (it.action) row.appendChild(el('button', { class: 'btn sm', onclick: it.action.run }, it.action.label));
 			list.appendChild(row);
 		}
 		const minWall = el('input', { type: 'text', value: o.minWall, class: 'num' }), minGap = el('input', { type: 'text', value: o.minGap, class: 'num' });

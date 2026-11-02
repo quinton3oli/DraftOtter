@@ -5,7 +5,8 @@ import { faceRegion } from './pushpull.js';
 import { roundFeatureAt } from './measureGeo.js';
 import { overlapOf, nodeMatrix } from './engine.js';
 import { download } from './util.js';
-import { fmt, round, toast, el, evalExpr } from './util.js';
+import { fmt, round, exact, toast, el, evalExpr } from './util.js';
+import { snapAngle } from './rounding.js';
 const DEG_ = Math.PI / 180;
 
 const DEG = Math.PI / 180;
@@ -148,7 +149,7 @@ export const AssemblyMixin = {
 				const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
 				W.decompose(p, q, s);
 				const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-				const next = { pos: p.toArray().map((v) => round(v)), rot: [e.x, e.y, e.z].map((v) => round(v / DEG_, 3)), scale: s.toArray().map((v) => round(v, 5)) };
+				const next = { pos: p.toArray().map(exact), rot: [e.x, e.y, e.z].map((v) => snapAngle(v / DEG_)), scale: s.toArray().map(exact) }; // mated parts meet exactly
 				if (node.exprs) for (const k of Object.keys(node.exprs)) if (/^(pos|rot|scale)\./.test(k)) delete node.exprs[k];
 				Object.assign(node, next);
 				m.lastB = b.map((v) => +v.toFixed(9));

@@ -233,7 +233,7 @@ export const ClaudeLinkMixin = {
 	claudeTransform(n, a) {
 		const v3 = (x, what) => {
 			if (!Array.isArray(x) || x.length !== 3 || x.some((q) => typeof q !== 'number' || !isFinite(q))) throw new Error(`${what} must be three numbers [x, y, z].`);
-			return x.map((q) => round(q, 6));
+			return x.map((q) => round(q, 9)); // float noise only: a scale like 1.5357142857 stays exact
 		};
 		const clear = (key) => { for (let i = 0; i < 3; i++) this.setExpr(n, key + '.' + i, null); };
 		if (a.position) { n.pos = v3(a.position, 'position'); clear('pos'); }

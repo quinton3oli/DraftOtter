@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { makeNode } from './model.js';
 import { HOLE_SIZES, HOLE_TYPES, TYPE_LABEL, holeCallout } from './holes.js';
-import { round, fmt, toast, el, evalExpr } from './util.js';
+import { round, exact, fmt, toast, el, evalExpr } from './util.js';
+import { snapAngle } from './rounding.js';
 
 const DEG = Math.PI / 180;
 
@@ -110,8 +111,8 @@ export const HoleWizardMixin = {
 		const p = new THREE.Vector3(), qq = new THREE.Quaternion(), sc = new THREE.Vector3();
 		local.decompose(p, qq, sc);
 		const eu = new THREE.Euler().setFromQuaternion(qq, 'XYZ');
-		hole.pos = p.toArray().map((v) => round(v, 4));
-		hole.rot = [eu.x, eu.y, eu.z].map((v) => round(v / DEG, 4));
+		hole.pos = p.toArray().map(exact); // exactly on the face (a counterbore's floor stays parallel to it)
+		hole.rot = [eu.x, eu.y, eu.z].map((v) => snapAngle(v / DEG));
 		g.children.push(hole);
 		this.sel = [g.id];
 		this.commit();

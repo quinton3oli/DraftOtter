@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { makeNode, makeGroup, cloneWithNewIds } from './model.js';
 import { sectionAt, fromPlane } from './engine.js';
-import { round, fmt, evalExpr, toast, el } from './util.js';
+import { round, exact, fmt, evalExpr, toast, el } from './util.js';
+import { snapAngle, snapMeasured } from './rounding.js';
 
 const AX = { x: 0, y: 1, z: 2 };
 
@@ -153,14 +154,14 @@ export const SplitMixin = {
 		for (const [k, g] of halves.entries()) {
 			const c = ctr.clone();
 			c.setComponent(i, k === 0 ? (bb.min.getComponent(i) + o.pos) / 2 : (o.pos + bb.max.getComponent(i)) / 2);
-			g.pos = c.toArray().map((v) => round(v));
-			for (const ch of g.children) ch.pos = ch.pos.map((v, j) => round(v - g.pos[j]));
+			g.pos = c.toArray().map((v) => round(v, 3));
+			for (const ch of g.children) ch.pos = ch.pos.map((v, j) => exact(v - g.pos[j])); // both halves cut in exactly the same place
 		}
 		const pins = spots.map(() => makeNode('cylinder', { r: o.pinD / 2, h: o.pinL }, { name: 'Alignment pin', color: node.color }));
 		if (o.orient) this.layCutDown(halves, o.axis);
 		else {
 			const d = new THREE.Vector3(); d.setComponent(i, 10);
-			halves[1].pos = halves[1].pos.map((v, j) => round(v + d.getComponent(j)));
+			halves[1].pos = halves[1].pos.map((v, j) => exact(v + d.getComponent(j)));
 		}
 		// pins stand next to the halves
 		let px = this.halvesMaxX(halves) + 6;
@@ -190,14 +191,14 @@ export const SplitMixin = {
 			const p = new THREE.Vector3(), qq = new THREE.Quaternion(), s = new THREE.Vector3();
 			R.decompose(p, qq, s);
 			const e = new THREE.Euler().setFromQuaternion(qq, 'XYZ');
-			g.rot = [e.x, e.y, e.z].map((r) => round(r * 180 / Math.PI, 3));
-			g.pos = p.toArray().map((v) => round(v));
+			g.rot = [e.x, e.y, e.z].map((r) => snapAngle(r * 180 / Math.PI));
+			g.pos = p.toArray().map(exact);
 			const w = this.engine.world(g);
 			w.computeBoundingBox();
 			const b = w.boundingBox;
 			w.dispose();
 			const dx = x === null ? 0 : x - b.min.x;
-			g.pos = [round(g.pos[0] + dx), round(g.pos[1]), round(g.pos[2] - b.min.z)];
+			g.pos = [exact(g.pos[0] + dx), exact(g.pos[1]), snapMeasured(g.pos[2] - b.min.z)];
 			x = b.max.x + dx + 10;
 		});
 	},

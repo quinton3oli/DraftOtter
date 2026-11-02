@@ -48,7 +48,7 @@ export function modelToParams(m, extra = {}) {
 	};
 }
 
-const round5 = (v) => Math.round(v * 1e5) / 1e5;
+const round5 = (v) => Math.round(v * 1e9) / 1e9; // float noise only: an outline traced off a face stays on its edges
 
 // ---------------------------------------------------------------- arcs
 

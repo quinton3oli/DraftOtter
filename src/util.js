@@ -7,6 +7,12 @@ export const round = (v, n = 4) => {
 	const r = Math.round(v * f) / f;
 	return Object.is(r, -0) ? 0 : r;
 };
+/**
+ * A stored coordinate, size or scale kept exactly: only float noise is dropped (9 decimals). Rounding stored geometry
+ * further (to 0.1 µm or 0.001°) moves parts off the faces they meet, each by its own amount, and the joins then show as
+ * hairline steps and sliver triangles.
+ */
+export const exact = (v) => round(v, 9);
 export const fmt = (v, n = 2) => {
 	if (!isFinite(v)) return '—';
 	return String(round(v, n));

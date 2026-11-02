@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeGroup } from './model.js';
 import { symmetryPlanes } from './engine.js';
-import { el, toast, round, fmt } from './util.js';
+import { el, toast, round, exact, fmt } from './util.js';
 const $ = (s) => document.querySelector(s);
 
 export const AXES = { z: [0, 0, 1], x: [1, 0, 0], y: [0, 1, 0] };
@@ -57,7 +57,7 @@ export const SymmetryMixin = {
 			this.setTool(null);
 			if (!n) return;
 			const local = P.applyMatrix4(this.worldMatrix(n).invert());
-			n.sym = { ...(n.sym || {}), center: [round(local.x, 4), round(local.y, 4), round(local.z, 4)] };
+			n.sym = { ...(n.sym || {}), center: [exact(local.x), exact(local.y), exact(local.z)] };
 			this.commit();
 			return;
 		}
@@ -79,13 +79,15 @@ export const SymmetryMixin = {
 		for (const n of nodes) box.union(this.worldBox(n));
 		const c = box.getCenter(new THREE.Vector3());
 		const point = P || c.clone();
+		c.set(round(c.x, 3), round(c.y, 3), round(c.z, 3)); // a clean origin; the parts keep their exact places
 		const list = this.model.nodes, idx = Math.min(...nodes.map((n) => list.indexOf(n)));
 		for (const n of nodes) list.splice(list.indexOf(n), 1);
-		for (const n of nodes) { n.pos = [round(n.pos[0] - c.x), round(n.pos[1] - c.y), round(n.pos[2] - c.z)]; n.locked = false; }
+		for (const n of nodes) { n.pos = [exact(n.pos[0] - c.x), exact(n.pos[1] - c.y), exact(n.pos[2] - c.z)]; n.locked = false; }
 		const first = nodes.find((n) => !n.hole) || nodes[0];
 		const g = makeGroup(nodes, { mode: 'symmetric', name: `Symmetric ×${st.n}`, color: first.color });
-		g.pos = [round(c.x), round(c.y), round(c.z)];
-		g.sym = { n: st.n, axis: [0, 0, 1], angle: 0, center: [round(point.x - c.x, 4), round(point.y - c.y, 4), round(point.z - c.z, 4)] };
+		g.pos = [c.x, c.y, c.z];
+		// the mirror planes exactly through the picked point (rounded, the mirrored copies miss each other by a hair)
+		g.sym = { n: st.n, axis: [0, 0, 1], angle: 0, center: [exact(point.x - c.x), exact(point.y - c.y), exact(point.z - c.z)] };
 		list.splice(idx, 0, g);
 		this.sel = [g.id];
 		this.commit();

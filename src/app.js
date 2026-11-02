@@ -17,6 +17,7 @@ import { massProps } from './analysis.js';
 import { SplitMixin } from './split.js';
 import { VectorMixin } from './vectorUI.js';
 import { PrintCheckMixin } from './printcheck.js';
+import { LineUpMixin } from './lineup.js';
 import { FitMixin, FITS, fitClearance, fitAxes, fittedParams } from './fits.js';
 import { loadFitCache } from './fitcache.js';
 import { CsgPool } from './workers.js';
@@ -49,7 +50,7 @@ import { PwaMixin } from './pwa.js';
 import { SculptMixin } from './sculptui.js';
 import { TabsMixin } from './tabs.js';
 import { holeCallout } from './holes.js';
-import { DEG, round, fmt, evalExpr, isExpression, exprError, exprNames, renameInExpr, resolveVars, EXPR_FUNCS, f32ToBase64, hashString, download, toast, el, readFile, pickFile, idbGet, idbSet } from './util.js';
+import { DEG, round, exact, fmt, evalExpr, isExpression, exprError, exprNames, renameInExpr, resolveVars, EXPR_FUNCS, f32ToBase64, hashString, download, toast, el, readFile, pickFile, idbGet, idbSet } from './util.js';
 import { solveModel } from './constraints.js';
 import { toModel, modelToParams, profileRegions, modelFromRegions, scaleModel, sketchPaths } from './sketchModel.js';
 import { ICONS, icon } from './icons.js';
@@ -78,7 +79,9 @@ const $ = (s) => document.querySelector(s);
  * many values changed.
  */
 function snapPushPull(n, ex = {}) {
-	const aligned = n.type === 'faceoff' || (n.rot || [0, 0, 0]).every((d) => Math.abs(d / 90 - Math.round(d / 90)) < 1e-9);
+	// flat ones on a face lined up with X, Y or Z: whole microns (older versions saved them 0.3 µm off, 46.9997 for 47);
+	// curved ones (faceoff) and slanted faces have true values that are not on a grid: float noise only
+	const aligned = n.type !== 'faceoff' && (n.rot || [0, 0, 0]).every((d) => Math.abs(d / 90 - Math.round(d / 90)) < 1e-9);
 	const snap = aligned ? (x) => snapTo(x, 0.001) : snapMeasured;
 	let changed = 0;
 	for (let i = 0; i < 3; i++) if (!ex['pos.' + i]) { const v = snap(n.pos[i]); if (v !== n.pos[i]) { n.pos[i] = v; changed++; } }
@@ -86,12 +89,6 @@ function snapPushPull(n, ex = {}) {
 	return changed;
 }
 
-/**
- * Float noise only (9 decimals): stored positions and sizes are kept exactly. Rounding them to 0.1 µm here and there
- * (each group, ungroup, move or copy) let parts creep off each other's faces, a fraction of a micron each time, and the
- * joins then showed as hairline steps and sliver triangles.
- */
-const exact = (v) => round(v, 9);
 /** A decomposed matrix as a node transform, without rounding anything off it. */
 const trs = (p, e, s) => ({ pos: [exact(p.x), exact(p.y), exact(p.z)], rot: [snapAngle(e.x / DEG), snapAngle(e.y / DEG), snapAngle(e.z / DEG)], scale: [exact(s.x), exact(s.y), exact(s.z)] });
 
@@ -928,8 +925,8 @@ class App {
 			for (const r of regions) {
 				const h = makeNode('facex', { loops: [r.outer, ...r.holes].map((lp) => lp.map(([x, y]) => [snapTo(x, 0.001), snapTo(y, 0.001)])), depth: -snapTo(t + Math.max(0.3, t * 0.5), 0.001), draft: 0 }, { name: 'Opening', hole: true, color });
 				const e = new THREE.Euler().setFromQuaternion(f.quat, 'XYZ');
-				h.pos = f.origin.toArray().map((v) => round(v, 5));
-				h.rot = [round(e.x / DEG, 4), round(e.y / DEG, 4), round(e.z / DEG, 4)];
+				h.pos = f.origin.toArray().map(exact);
+				h.rot = [snapAngle(e.x / DEG), snapAngle(e.y / DEG), snapAngle(e.z / DEG)];
 				out.push(h);
 			}
 		}
@@ -1011,7 +1008,7 @@ class App {
 		}
 		const dims = ['w', 'd', 'h', 'r', 'r1', 'ro', 'height'].filter((k) => k in p && !approx);
 		if (dims.some((k) => !(p[k] > 1e-3))) { toast('Wall thickness is too large for this object', 'error'); return null; }
-		c.pos = [round(dx * n.scale[0]), round(dy * n.scale[1]), round(lift * n.scale[2])];
+		c.pos = [round(dx * n.scale[0], 9), round(dy * n.scale[1], 9), round(lift * n.scale[2], 9)]; // exact walls (`exact` here is the flag below)
 		// Open faces: stretch the cavity out through those sides (keeps the other walls at t).
 		if (open.length) {
 			const g = this.engine.geometry(c);
@@ -1026,8 +1023,8 @@ class App {
 				if (S[i] >= 0) { S[i] = (hi - lo) / size; P[i] = lo - S[i] * B.min.getComponent(i); }
 				else { S[i] = -(hi - lo) / size; P[i] = hi - S[i] * B.min.getComponent(i); }
 			}
-			c.scale = S.map((v) => round(v, 6));
-			c.pos = P.map((v) => round(v, 5));
+			c.scale = S.map((v) => round(v, 9));
+			c.pos = P.map((v) => round(v, 9));
 		}
 		return { inner: c, exact };
 	}
@@ -1150,6 +1147,8 @@ class App {
 		const origin = sp.point.clone();
 		const snap = this.model.settings.snap;
 		if (snap > 0) for (const k of ['x', 'y', 'z']) if (Math.abs(basis.n[k]) < 1e-3) origin[k] = Math.round(origin[k] / snap) * snap;
+		// across the face: the clicked point is off the 32-bit display mesh — float noise off, so the sketch sits on the face
+		for (const k of ['x', 'y', 'z']) if (Math.abs(basis.n[k]) > 1 - 1e-6) origin[k] = snapMeasured(origin[k]);
 		const reference = faceOutline(sp.object, origin, basis);
 		const res = await openSketchEditor({ pts: [], cons: [], mode: 'extrude', height: 5 }, this.sketchOpts({ isNew: true, onFace: { target: target.name, reference } }));
 		if (!res) return;
@@ -1430,9 +1429,9 @@ class App {
 		const inv = Mg.clone().invert();
 		const nm = new THREE.Matrix3().getNormalMatrix(inv);
 		const conv = (ch) => ({
-			pts: ch.pts.map((p) => new THREE.Vector3(...p).applyMatrix4(inv).toArray().map((x) => round(x, 5))),
-			n1: ch.n1.map((n) => new THREE.Vector3(...n).applyMatrix3(nm).normalize().toArray().map((x) => round(x, 6))),
-			n2: ch.n2.map((n) => new THREE.Vector3(...n).applyMatrix3(nm).normalize().toArray().map((x) => round(x, 6))),
+			pts: ch.pts.map((p) => new THREE.Vector3(...p).applyMatrix4(inv).toArray().map(exact)),
+			n1: ch.n1.map((n) => new THREE.Vector3(...n).applyMatrix3(nm).normalize().toArray().map(exact)),
+			n2: ch.n2.map((n) => new THREE.Vector3(...n).applyMatrix3(nm).normalize().toArray().map(exact)),
 			closed: ch.closed, convex: ch.convex,
 		});
 		const label = kind === 'fillet' ? 'Fillet' : 'Chamfer';
@@ -1767,7 +1766,7 @@ class App {
 		for (const n of nodes) {
 			if (!this.model.isTopLevel(n.id) || n.locked) continue;
 			const b = this.worldBox(n);
-			if (!b.isEmpty() && Math.abs(b.min.z) > 1e-9) { this.setExpr(n, 'pos.2', null); n.pos[2] = round(n.pos[2] - b.min.z); }
+			if (!b.isEmpty() && Math.abs(b.min.z) > 1e-9) { this.setExpr(n, 'pos.2', null); n.pos[2] = snapMeasured(n.pos[2] - b.min.z); }
 		}
 		this.commit();
 	}
@@ -4161,7 +4160,7 @@ function bakeScaleInner(n, force) {
 	const near = (a, b) => Math.abs(a - b) < 1e-6 * Math.max(1, a, b);
 	if (near(sx, 1) && near(sy, 1) && near(sz, 1)) return;
 	let done = false;
-	const r = (v) => round(v, 3);
+	const r = (v) => snapNoise(exact(v));
 	switch (n.type) {
 		case 'box': case 'wedge': case 'pyramid':
 			p.w = r(p.w * sx); p.d = r(p.d * sy); p.h = r(p.h * sz); done = true; break;
@@ -4220,7 +4219,7 @@ function faceOutline(mesh, origin, basis) {
 	const to2 = (v) => { const d = v.clone().sub(origin); return [d.dot(basis.x), d.dot(basis.y)]; };
 	for (const e of edges.values()) {
 		if (e.count !== 1) continue;
-		out.push([...to2(e.p), ...to2(e.q)].map((v) => round(v, 4)));
+		out.push([...to2(e.p), ...to2(e.q)].map(snapMeasured)); // 32-bit mesh: float noise off, nothing more (a sketch corner snapped onto one sits on the edge)
 		if (out.length > 4000) break;
 	}
 	return out;
@@ -4292,7 +4291,7 @@ function makeThumbnails(engine, only) {
 	return out;
 }
 
-Object.assign(App.prototype, SplitMixin, VectorMixin, PrintCheckMixin, FitMixin, ConfigMixin, TemplateMixin, VersionMixin, AssemblyMixin, WrapMixin, TimelineMixin, DrawingMixin, FontPickerMixin, HoleWizardMixin, FeaMixin, ArrangeMixin, RoundMixin, ImageImportMixin, MeshImportMixin, ReliefMixin, ClaudeLinkMixin, ModifierMixin, HistoryMixin, PwaMixin, SculptMixin, TabsMixin, RenderMixin, PaintMixin, PrintPrepMixin, SymmetryMixin);
+Object.assign(App.prototype, SplitMixin, VectorMixin, PrintCheckMixin, FitMixin, ConfigMixin, TemplateMixin, VersionMixin, AssemblyMixin, WrapMixin, TimelineMixin, DrawingMixin, FontPickerMixin, HoleWizardMixin, FeaMixin, ArrangeMixin, RoundMixin, ImageImportMixin, MeshImportMixin, ReliefMixin, ClaudeLinkMixin, ModifierMixin, HistoryMixin, PwaMixin, SculptMixin, TabsMixin, RenderMixin, PaintMixin, PrintPrepMixin, SymmetryMixin, LineUpMixin);
 
 const app = new App();
 
